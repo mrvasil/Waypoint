@@ -1,0 +1,11 @@
+# Артефакты сборки Swift
+.build/
+build/
+*.xcodeproj
+.swiftpm/
+
+# macOS
+.DS_Store
+
+# Логи и временные файлы
+*.log
