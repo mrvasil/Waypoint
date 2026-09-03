@@ -15,6 +15,7 @@
   <img alt="Swift 6" src="https://img.shields.io/badge/Swift-6-F05138?style=flat-square&logo=swift&logoColor=white">
   <img alt="Xray Core" src="https://img.shields.io/badge/powered%20by-Xray-4B7BEC?style=flat-square">
   <img alt="Status" src="https://img.shields.io/badge/status-active%20development-34C759?style=flat-square">
+  <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-007AFF?style=flat-square"></a>
 </p>
 
 ---
@@ -23,14 +24,34 @@ Waypoint brings system-wide VPN, per-app proxy endpoints, traffic policies,
 tunnel chains, and automatic failover into one focused macOS app. Add a link,
 a WireGuard profile, or a subscription; then decide exactly where traffic goes.
 
-| | What it gives you |
-|---|---|
-| 🛡 **System VPN** | Routes all Mac TCP/UDP traffic through a selected tunnel, chain, or fallback group. |
-| ⤴ **Local proxies** | Independent SOCKS5 and HTTP endpoints for browsers, Telegram, development tools, or other apps. |
-| ◫ **Traffic policies** | Route domains, CIDRs, `geosite:*`, and `geoip:*` to a tunnel, chain, fallback, Direct, or Block. |
-| ⛓ **Tunnel chains** | Compose WireGuard and Xray transports into multi-hop paths such as WG → VLESS. |
-| ⑂ **Smart fallback** | Start on the first route immediately, measure alternatives in the background, and switch only after confirmation. |
-| ◉ **Native control** | SwiftUI interface, menu bar controls, live tunnel latency, and global **⌘⇧V** VPN toggle. |
+<table>
+  <tr>
+    <td width="60%" valign="middle">
+      <a href="docs/screenshots/dashboard.png">
+        <img src="docs/screenshots/dashboard.png" width="100%" alt="Waypoint dashboard with system VPN and local proxy enabled">
+      </a>
+    </td>
+    <td width="40%" valign="middle">
+      <h3>Everything connected, at a glance</h3>
+      <p><strong>VPN + proxy</strong><br>Run them independently or together.</p>
+      <p><strong>Live route</strong><br>See the active fallback exit immediately.</p>
+      <p><strong>Native control</strong><br>Use the app, menu bar, or <kbd>⌘ ⇧ V</kbd>.</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="40%" valign="middle">
+      <h3>Routing without guesswork</h3>
+      <p><strong>First-match policies</strong><br>Domains, CIDRs, GeoSite, and GeoIP.</p>
+      <p><strong>Composable routes</strong><br>Tunnels, multi-hop chains, Direct, or Block.</p>
+      <p><strong>Smart fallback</strong><br>Connect immediately, then select the best healthy route.</p>
+    </td>
+    <td width="60%" valign="middle">
+      <a href="docs/screenshots/vpn-routing.png">
+        <img src="docs/screenshots/vpn-routing.png" width="100%" alt="Waypoint VPN routing policies, tunnel chain, and fallback configuration">
+      </a>
+    </td>
+  </tr>
+</table>
 
 ## Quick start
 
@@ -206,6 +227,10 @@ the original untouched as a fallback.
 - Local builds use ad-hoc signing; Developer ID packaging and a DMG are not included yet.
 - System VPN uses a restricted LaunchDaemon rather than Network Extension, so it does
   not appear as a separate profile in System Settings → VPN.
+
+## License
+
+Waypoint is available under the [MIT License](LICENSE).
 
 ---
 
