@@ -14,21 +14,21 @@ struct MenuBarContent: View {
 
     var body: some View {
         Label(
-            "VPN · \(vpnStatusTitle)",
+            L10n.format("VPN · %@", vpnStatusTitle),
             systemImage: model.isSystemVPNReady
                 ? "shield.fill"
                 : (model.isSystemVPNActive ? "clock" : "shield")
         )
 
         Label(
-            "Прокси · \(proxyStatusTitle)",
+            L10n.format("Прокси · %@", proxyStatusTitle),
             systemImage: model.isLocalProxyActive
                 ? "arrow.triangle.branch"
                 : (model.isLocalProxyConnecting ? "clock" : "circle.dashed")
         )
 
         if let iface = model.bypass?.active {
-            Label("Обход через \(iface)", systemImage: "network")
+            Label(L10n.format("Обход через %@", iface), systemImage: "network")
         }
 
         Divider()
@@ -66,7 +66,7 @@ struct MenuBarContent: View {
                 Button {
                     model.copyToClipboard(proxy.address)
                 } label: {
-                    Label("Копировать \(proxy.address)", systemImage: "doc.on.doc")
+                    Label(L10n.format("Копировать %@", proxy.address), systemImage: "doc.on.doc")
                 }
             }
         }
@@ -89,16 +89,16 @@ struct MenuBarContent: View {
     }
 
     private var vpnStatusTitle: String {
-        if model.isSystemVPNReady { return "включён" }
-        if model.isSystemVPNActive { return "подключается" }
-        return "выключен"
+        if model.isSystemVPNReady { return L10n.string("включён") }
+        if model.isSystemVPNActive { return L10n.string("подключается") }
+        return L10n.string("выключен")
     }
 
     private var proxyStatusTitle: String {
         if model.isLocalProxyActive {
-            return "включён (\(model.state.proxies.filter(\.enabled).count))"
+            return L10n.format("включён (%lld)", model.state.proxies.filter(\.enabled).count)
         }
-        if model.isLocalProxyConnecting { return "запускается" }
-        return "выключен"
+        if model.isLocalProxyConnecting { return L10n.string("запускается") }
+        return L10n.string("выключен")
     }
 }

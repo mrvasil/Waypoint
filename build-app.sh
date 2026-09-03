@@ -34,6 +34,13 @@ if [ -f "$ROOT/Resources/AppIcon.icns" ]; then
     cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 fi
 
+# Локализации лежат в основном bundle, чтобы SwiftUI мог менять язык без
+# перезапуска и без зависимости от пути сборки SwiftPM.
+for localization in "$ROOT"/Sources/WaypointCore/Resources/*.lproj; do
+    [ -d "$localization" ] || continue
+    cp -R "$localization" "$APP/Contents/Resources/"
+done
+
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -47,6 +54,12 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundlePackageType</key>     <string>APPL</string>
     <key>CFBundleExecutable</key>      <string>Waypoint</string>
     <key>CFBundleIconFile</key>        <string>AppIcon</string>
+    <key>CFBundleDevelopmentRegion</key><string>ru</string>
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>ru</string>
+        <string>en</string>
+    </array>
     <key>LSMinimumSystemVersion</key>  <string>15.0</string>
     <key>NSHighResolutionCapable</key> <true/>
     <!-- Приложение живёт в Dock: менюбар — дополнение, а не единственный вход. -->

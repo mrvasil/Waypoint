@@ -5,12 +5,18 @@ import OSLog
 @main
 struct WaypointApp: App {
     @State private var model = AppModel()
+    @AppStorage(AppLanguage.storageKey) private var appLanguageValue = AppLanguage.system.rawValue
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
+
+    private var appLanguage: AppLanguage {
+        AppLanguage(rawValue: appLanguageValue) ?? .system
+    }
 
     var body: some Scene {
         WindowGroup("Waypoint") {
             ContentView()
                 .environment(model)
+                .environment(\.locale, appLanguage.locale)
                 .task {
                     delegate.configureGlobalVPNShortcut {
                         model.toggleSystemVPN()
@@ -21,19 +27,19 @@ struct WaypointApp: App {
         .windowResizability(.contentMinSize)
         .defaultLaunchBehavior(.presented)
         .commands {
-            CommandMenu("Подключение") {
-                Button(model.isSystemVPNActive ? "Отключить VPN" : "Включить VPN") {
+            CommandMenu(L10n.string("Подключение")) {
+                Button(L10n.string(model.isSystemVPNActive ? "Отключить VPN" : "Включить VPN")) {
                     model.toggleSystemVPN()
                 }
                 .keyboardShortcut("v", modifiers: [.command, .shift])
 
-                Button(model.localProxyRequested ? "Отключить прокси" : "Включить прокси") {
+                Button(L10n.string(model.localProxyRequested ? "Отключить прокси" : "Включить прокси")) {
                     model.toggleLocalProxy()
                 }
 
                 Divider()
 
-                Button("Проверить конфиг") { model.validate() }
+                Button(L10n.string("Проверить конфиг")) { model.validate() }
                     .keyboardShortcut("t", modifiers: .command)
             }
         }
@@ -44,6 +50,7 @@ struct WaypointApp: App {
                 delegate.openMainWindow()
             }
                 .environment(model)
+                .environment(\.locale, appLanguage.locale)
         } label: {
             MenuBarIcon(active: model.isRunning)
         }

@@ -60,7 +60,10 @@ struct PersistentRouteSheet: View {
                     }
 
                     HStack(spacing: 8) {
-                        Label("\(parsedTargets.count) целей", systemImage: "checkmark.circle")
+                        Label(
+                            L10n.format("%lld целей", parsedTargets.count),
+                            systemImage: "checkmark.circle"
+                        )
                             .foregroundStyle(parsedTargets.isEmpty ? Color.secondary : Color.green)
                         Text("•")
                             .foregroundStyle(.tertiary)
@@ -125,8 +128,10 @@ struct PersistentRouteSheet: View {
 
     private var invalidTargetsDescription: String {
         let examples = parsedTargets.invalidLines.prefix(3).joined(separator: ", ")
-        let suffix = parsedTargets.invalidLines.count > 3 ? " и ещё \(parsedTargets.invalidLines.count - 3)" : ""
-        return "Не удалось распознать: \(examples)\(suffix)"
+        let suffix = parsedTargets.invalidLines.count > 3
+            ? L10n.format(" и ещё %lld", parsedTargets.invalidLines.count - 3)
+            : ""
+        return L10n.format("Не удалось распознать: %@%@", examples, suffix)
     }
 
     @ViewBuilder

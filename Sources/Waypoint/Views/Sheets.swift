@@ -53,7 +53,7 @@ struct SheetChrome<Content: View>: View {
                 Spacer()
                 Button("Отмена") { dismiss() }
                     .keyboardShortcut(.cancelAction)
-                Button(confirmTitle) {
+                Button(L10n.string(confirmTitle)) {
                     onConfirm()
                     dismiss()
                 }
@@ -90,9 +90,9 @@ struct SheetTitle: View {
                 .background(.tint.opacity(0.12), in: .rect(cornerRadius: 10))
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.headline)
+                Text(L10n.string(title)).font(.headline)
                 if let subtitle {
-                    Text(subtitle)
+                    Text(L10n.string(subtitle))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -125,7 +125,7 @@ struct FormGroup<Content: View>: View {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 9) {
                     SymbolTile(symbol: symbol, color: color, size: 28)
-                    Text(title).font(.headline)
+                    Text(L10n.string(title)).font(.headline)
                 }
                 Divider()
                 content
@@ -164,7 +164,9 @@ struct AddTunnelSheet: View {
 
             VStack(alignment: .leading, spacing: 18) {
                 Picker("Способ добавления", selection: $mode) {
-                    ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                    ForEach(Mode.allCases, id: \.self) {
+                        Text(L10n.string($0.rawValue)).tag($0)
+                    }
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
@@ -248,7 +250,10 @@ struct AddTunnelSheet: View {
 
     private func previewView(_ result: ParseResult) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("Распознано: \(result.tunnels.count)", systemImage: "checkmark.circle")
+            Label(
+                L10n.format("Распознано: %lld", result.tunnels.count),
+                systemImage: "checkmark.circle"
+            )
                 .font(.headline)
 
             GroupCard {
@@ -263,7 +268,10 @@ struct AddTunnelSheet: View {
                         }
                     }
                     ForEach(result.errors) { error in
-                        Label("\(error.line) — \(error.message)", systemImage: "exclamationmark.triangle.fill")
+                        Label(
+                            L10n.format("%@ — %@", error.line, L10n.string(error.message)),
+                            systemImage: "exclamationmark.triangle.fill"
+                        )
                             .foregroundStyle(.orange)
                             .lineLimit(1)
                     }
@@ -349,7 +357,7 @@ struct ProxySheet: View {
                     LabeledField("Тип") {
                         Picker("Тип", selection: $kind) {
                             ForEach(LocalProxy.Kind.allCases, id: \.self) {
-                                Text($0.label).tag($0)
+                                Text(L10n.string($0.label)).tag($0)
                             }
                         }
                         .pickerStyle(.segmented)
@@ -375,7 +383,7 @@ struct ProxySheet: View {
                     LabeledField("Профиль") {
                         Picker("Профиль маршрутизации", selection: $routingMode) {
                             ForEach(LocalProxy.RoutingMode.allCases, id: \.self) { mode in
-                                Text(mode.label).tag(mode)
+                                Text(L10n.string(mode.label)).tag(mode)
                             }
                         }
                         .pickerStyle(.menu)
@@ -409,7 +417,10 @@ struct ProxySheet: View {
                         }
                     }
 
-                    Label(routingDescription, systemImage: routingMode == .directRussia ? "globe.europe.africa.fill" : "arrow.triangle.branch")
+                    Label(
+                        L10n.string(routingDescription),
+                        systemImage: routingMode == .directRussia ? "globe.europe.africa.fill" : "arrow.triangle.branch"
+                    )
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -504,7 +515,7 @@ struct LabeledField<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title)
+            Text(L10n.string(title))
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.secondary)
             content
@@ -524,7 +535,7 @@ struct ConfigSheet: View {
                 .padding(.vertical, 18)
             Divider()
             ScrollView {
-                Text(text)
+                Text(L10n.string(text))
                     .font(.caption.monospaced())
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)

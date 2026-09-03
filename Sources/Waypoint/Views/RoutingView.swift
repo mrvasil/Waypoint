@@ -122,14 +122,14 @@ private struct VPNStatusHero: View {
                     HStack(spacing: 8) {
                         Text("Системный VPN")
                             .font(.title3.weight(.semibold))
-                        Text(statusLabel)
+                        Text(L10n.string(statusLabel))
                             .font(.caption2.weight(.bold))
                             .foregroundStyle(statusColor)
                             .padding(.horizontal, 7)
                             .padding(.vertical, 3)
                             .background(statusColor.opacity(0.11), in: Capsule())
                     }
-                    Text(statusDescription)
+                    Text(L10n.string(statusDescription))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -137,7 +137,7 @@ private struct VPNStatusHero: View {
                 Spacer(minLength: 16)
 
                 Button(
-                    model.isSystemVPNActive ? "Отключить" : "Подключить",
+                    L10n.string(model.isSystemVPNActive ? "Отключить" : "Подключить"),
                     systemImage: model.isSystemVPNActive ? "stop.fill" : "power",
                     action: model.toggleSystemVPN
                 )
@@ -179,7 +179,10 @@ private struct VPNStatusHero: View {
             return "Конфигурация требует внимания; текущий runtime не остановлен принудительно"
         }
         if model.isSystemVPNReady {
-            return "Весь трафик Mac обрабатывается через \(model.status.vpnInterface ?? "utun")"
+            return L10n.format(
+                "Весь трафик Mac обрабатывается через %@",
+                model.status.vpnInterface ?? "utun"
+            )
         }
         if model.isSystemVPNActive { return "Xray поднимает системный маршрут" }
         return "Политики, цепочки и fallback применяются в одном процессе Xray"
@@ -246,7 +249,7 @@ private struct VPNMetric: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(value)
                     .font(.headline.monospacedDigit())
-                Text(title)
+                Text(L10n.string(title))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -281,7 +284,7 @@ private struct VPNPrimaryRouteCard: View {
                     Text("Остальной трафик")
                         .font(.body.weight(.semibold))
                     if let routeIssue {
-                        Text(routeIssue)
+                        Text(L10n.string(routeIssue))
                             .font(.caption)
                             .foregroundStyle(.orange)
                             .lineLimit(1)
@@ -292,7 +295,7 @@ private struct VPNPrimaryRouteCard: View {
                             emphasized: model.isSystemVPNActive
                         )
                     } else {
-                        Text(route.detail)
+                        Text(L10n.string(route.detail))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -395,7 +398,7 @@ private struct VPNPolicyRow: View {
                             .font(.body.weight(.semibold))
                             .lineLimit(1)
                         if let issue {
-                            Label(issue, systemImage: "exclamationmark.triangle.fill")
+                            Label(L10n.string(issue), systemImage: "exclamationmark.triangle.fill")
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(.orange)
                                 .lineLimit(1)
@@ -557,7 +560,7 @@ private func topologyHeader(
         SymbolTile(symbol: symbol, color: color, size: 34)
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 7) {
-                Text(title).font(.headline)
+                Text(L10n.string(title)).font(.headline)
                 Text("\(count)")
                     .font(.caption2.monospacedDigit().weight(.bold))
                     .foregroundStyle(.secondary)
@@ -565,7 +568,7 @@ private func topologyHeader(
                     .padding(.vertical, 2)
                     .background(.quaternary, in: Capsule())
             }
-            Text(subtitle).font(.caption).foregroundStyle(.secondary)
+            Text(L10n.string(subtitle)).font(.caption).foregroundStyle(.secondary)
         }
         Spacer()
         Button("Добавить", systemImage: "plus", action: action)
@@ -578,8 +581,8 @@ private func topologyHeader(
 @MainActor
 private func topologyEmpty(title: String, description: String, action: @escaping () -> Void) -> some View {
     VStack(spacing: 7) {
-        Text(title).font(.callout.weight(.medium))
-        Text(description)
+        Text(L10n.string(title)).font(.callout.weight(.medium))
+        Text(L10n.string(description))
             .font(.caption)
             .foregroundStyle(.secondary)
             .multilineTextAlignment(.center)
@@ -616,13 +619,13 @@ private struct VPNChainRow: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(chain.name).font(.callout.weight(.semibold)).lineLimit(1)
-                Text(structuralIssue ?? path)
+                Text(structuralIssue.map { L10n.string($0) } ?? path)
                     .font(.caption)
                     .foregroundStyle(structuralIssue == nil ? Color.secondary : Color.orange)
                     .lineLimit(1)
             }
             Spacer(minLength: 8)
-            Text("\(chain.tunnelIds.count) hop")
+            Text(L10n.format("%lld hop", chain.tunnelIds.count))
                 .font(.caption2.monospacedDigit().weight(.semibold))
                 .foregroundStyle(.secondary)
             Toggle("Включить цепочку", isOn: Binding(
@@ -675,7 +678,7 @@ private struct VPNFallbackRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(group.name).font(.callout.weight(.semibold)).lineLimit(1)
                 if let structuralIssue {
-                    Text(structuralIssue)
+                    Text(L10n.string(structuralIssue))
                         .font(.caption)
                         .foregroundStyle(.orange)
                         .lineLimit(1)
@@ -684,7 +687,7 @@ private struct VPNFallbackRow: View {
                 }
             }
             Spacer(minLength: 8)
-            Text("≤ \(group.maxLatencyMs) мс")
+            Text(L10n.format("≤ %lld мс", group.maxLatencyMs))
                 .font(.caption2.monospacedDigit().weight(.semibold))
                 .foregroundStyle(.secondary)
             Toggle("Включить fallback", isOn: Binding(
@@ -763,7 +766,7 @@ struct RoutingProxyCard: View {
                     Text(proxy.name.isEmpty ? proxy.kind.label : proxy.name)
                         .font(.body.weight(.semibold))
                         .lineLimit(1)
-                    Text(proxy.enabled ? "АКТИВЕН" : "ВЫКЛЮЧЕН")
+                    Text(L10n.string(proxy.enabled ? "АКТИВЕН" : "ВЫКЛЮЧЕН"))
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(proxy.enabled ? .green : .secondary)
                 }
@@ -784,7 +787,7 @@ struct RoutingProxyCard: View {
             ))
             .toggleStyle(.switch)
             .labelsHidden()
-            .help(proxy.enabled ? "Выключить прокси" : "Включить прокси")
+            .help(L10n.string(proxy.enabled ? "Выключить прокси" : "Включить прокси"))
 
             Menu {
                 Button("Изменить", systemImage: "pencil", action: onEdit)
@@ -934,9 +937,9 @@ private struct RoutingFlowRow: View {
                 .frame(width: 22)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(title)
+                Text(L10n.string(title))
                     .font(.callout.weight(.medium))
-                Text(detail)
+                Text(L10n.string(detail))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -947,7 +950,7 @@ private struct RoutingFlowRow: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.tertiary)
 
-            Label(destination, systemImage: destinationSymbol)
+            Label(L10n.string(destination), systemImage: destinationSymbol)
                 .font(.callout.weight(.medium))
                 .foregroundStyle(destinationColor)
                 .lineLimit(1)
@@ -961,9 +964,9 @@ private struct RoutingFlowRow: View {
 private extension LocalProxy.RoutingMode {
     var shortLabel: String {
         switch self {
-        case .tunnelAll: "В туннель"
-        case .directRussia: "RU напрямую"
-        case .directAll: "Напрямую"
+        case .tunnelAll: L10n.string("В туннель")
+        case .directRussia: L10n.string("RU напрямую")
+        case .directAll: L10n.string("Напрямую")
         }
     }
 }

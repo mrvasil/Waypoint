@@ -12,11 +12,11 @@ enum AppSection: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .overview: "Обзор"
-        case .tunnels: "Туннели"
-        case .proxies: "Прокси"
+        case .overview: L10n.string("Обзор")
+        case .tunnels: L10n.string("Туннели")
+        case .proxies: L10n.string("Прокси")
         case .routing: "VPN"
-        case .logs: "Журнал"
+        case .logs: L10n.string("Журнал")
         }
     }
 
@@ -92,18 +92,18 @@ struct AppSidebar: View {
 
     private var vpnDetail: String {
         if model.isSystemVPNReady {
-            return "Через \(model.status.vpnInterface ?? "utun")"
+            return L10n.format("Через %@", model.status.vpnInterface ?? "utun")
         }
-        if model.isSystemVPNActive { return "Подключение…" }
+        if model.isSystemVPNActive { return L10n.string("Подключение…") }
         if let issue = model.state.systemVPNMainRouteIssue() { return issue }
         return model.state.vpnMainRoutePresentation().name
     }
 
     private var proxyDetail: String {
         let count = model.state.proxies.filter(\.enabled).count
-        if model.isLocalProxyActive { return "\(count) локальных адресов" }
-        if model.isLocalProxyConnecting { return "Запуск…" }
-        return count == 0 ? "Нет адресов" : "\(count) настроено"
+        if model.isLocalProxyActive { return L10n.format("%lld локальных адресов", count) }
+        if model.isLocalProxyConnecting { return L10n.string("Запуск…") }
+        return count == 0 ? L10n.string("Нет адресов") : L10n.format("%lld настроено", count)
     }
 }
 
@@ -123,9 +123,9 @@ private struct SidebarConnectionStatusRow: View {
 
         var title: String {
             switch self {
-            case .inactive: "выключен"
-            case .connecting: "подключается"
-            case .active: "включён"
+            case .inactive: L10n.string("выключен")
+            case .connecting: L10n.string("подключается")
+            case .active: L10n.string("включён")
             }
         }
     }
@@ -144,19 +144,21 @@ private struct SidebarConnectionStatusRow: View {
 
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 5) {
-                    Text(title)
+                    Text(L10n.string(title))
                     Circle()
                         .fill(state.color)
                         .frame(width: 6, height: 6)
                 }
 
-                Text(detail)
+                Text(L10n.string(detail))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(title), \(state.title), \(detail)")
+        .accessibilityLabel(
+            L10n.format("%@, %@, %@", L10n.string(title), state.title, L10n.string(detail))
+        )
     }
 }

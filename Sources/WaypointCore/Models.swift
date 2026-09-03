@@ -98,9 +98,9 @@ public struct LocalProxy: Identifiable, Codable, Equatable, Sendable {
 
         public var label: String {
             switch self {
-            case .tunnelAll: return "Всё через туннель"
-            case .directRussia: return "Россия напрямую"
-            case .directAll: return "Всё напрямую"
+            case .tunnelAll: return L10n.string("Всё через туннель")
+            case .directRussia: return L10n.string("Россия напрямую")
+            case .directAll: return L10n.string("Всё напрямую")
             }
         }
     }

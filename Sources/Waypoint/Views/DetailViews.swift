@@ -121,7 +121,7 @@ struct DashboardView: View {
     private var proxyDetail: String {
         guard model.xrayPath != nil else { return "Xray не найден" }
         if model.isLocalProxyActive {
-            return "Включено адресов: \(enabledProxies.count)"
+            return L10n.format("Включено адресов: %lld", enabledProxies.count)
         }
         if model.isLocalProxyConnecting {
             return "Добавление локальных адресов"
@@ -129,13 +129,13 @@ struct DashboardView: View {
         if enabledProxies.isEmpty {
             return "Нет включённых адресов"
         }
-        return "Готово адресов: \(enabledProxies.count)"
+        return L10n.format("Готово адресов: %lld", enabledProxies.count)
     }
 
     private var vpnDetail: String {
         guard model.xrayPath != nil else { return "Xray не найден" }
         if model.isSystemVPNReady {
-            return "Весь трафик · \(model.status.vpnInterface ?? "utun")"
+            return L10n.format("Весь трафик · %@", model.status.vpnInterface ?? "utun")
         }
         if model.isSystemVPNActive {
             return "Запуск системного туннеля"
@@ -236,7 +236,7 @@ struct TunnelsView: View {
                     if !manualTunnels.isEmpty {
                         SectionHeader(
                             title: "Мои туннели",
-                            subtitle: "Добавлены вручную · \(manualTunnels.count)"
+                            subtitle: L10n.format("Добавлены вручную · %lld", manualTunnels.count)
                         )
 
                         GroupCard {
@@ -348,7 +348,7 @@ private struct SubscriptionCard: View {
                     if let error = model.subscriptionErrors[subscription.id] {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundStyle(.orange)
-                        Text(error)
+                        Text(L10n.string(error))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     } else {
@@ -358,7 +358,7 @@ private struct SubscriptionCard: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Text("\(tunnels.count) узл.")
+                    Text(L10n.format("%lld узл.", tunnels.count))
                         .foregroundStyle(.tertiary)
                 }
                 .font(.caption)
@@ -367,7 +367,7 @@ private struct SubscriptionCard: View {
             }
         }
         .confirmationDialog(
-            "Удалить подписку «\(subscription.name)»?",
+            L10n.format("Удалить подписку «%@»?", subscription.name),
             isPresented: $confirmingDelete
         ) {
             Button("Удалить подписку", role: .destructive) {
@@ -380,8 +380,11 @@ private struct SubscriptionCard: View {
     }
 
     private var lastUpdatedText: String {
-        guard let date = subscription.lastUpdatedAt else { return "Ещё не обновлялась" }
-        return "Обновлено \(date.formatted(date: .abbreviated, time: .shortened))"
+        guard let date = subscription.lastUpdatedAt else { return L10n.string("Ещё не обновлялась") }
+        return L10n.format(
+            "Обновлено %@",
+            date.formatted(date: .abbreviated, time: .shortened)
+        )
     }
 
     private var subscriptionHost: String {
@@ -532,7 +535,7 @@ private struct DashboardVPNRoutePicker: View {
                         emphasized: model.isSystemVPNActive
                     )
                 } else {
-                    Text(routeDescription)
+                    Text(L10n.string(routeDescription))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -609,14 +612,14 @@ private struct DashboardVPNRoutePicker: View {
         .onHover { isHovering = $0 }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: isHovering)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Основной маршрут системного VPN: \(route.name)")
+        .accessibilityLabel(L10n.format("Основной маршрут системного VPN: %@", route.name))
     }
 
     private func latencyText(for tunnel: Tunnel) -> String? {
         guard let result = model.testResults[tunnel.id],
               result.ok,
               let milliseconds = result.latencyMs else { return nil }
-        return "\(milliseconds) мс"
+        return L10n.format("%lld мс", milliseconds)
     }
 
     private func latencyColor(for tunnel: Tunnel) -> Color {
@@ -649,7 +652,7 @@ private struct DashboardMetricButton: View {
                     Text(value)
                         .font(.title2.weight(.semibold))
                         .lineLimit(1)
-                    Text("\(title) · \(detail)")
+                    Text(L10n.format("%@ · %@", L10n.string(title), L10n.string(detail)))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -676,9 +679,11 @@ private struct DashboardMetricButton: View {
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: isHovering)
-        .accessibilityLabel("\(title): \(value), \(detail)")
-        .accessibilityHint("Открыть раздел «\(title)»")
-        .help("Открыть раздел «\(title)»")
+        .accessibilityLabel(
+            L10n.format("%@: %@, %@", L10n.string(title), value, L10n.string(detail))
+        )
+        .accessibilityHint(L10n.format("Открыть раздел «%@»", L10n.string(title)))
+        .help(L10n.format("Открыть раздел «%@»", L10n.string(title)))
     }
 }
 
@@ -706,7 +711,7 @@ private struct DashboardProxyRow: View {
             }
             .labelStyle(.iconOnly)
             .buttonStyle(.borderless)
-            .help("Скопировать \(proxy.address)")
+            .help(L10n.format("Скопировать %@", proxy.address))
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -722,12 +727,12 @@ struct EmptyState: View {
 
     var body: some View {
         ContentUnavailableView {
-            Label(title, systemImage: symbol)
+            Label(L10n.string(title), systemImage: symbol)
         } description: {
-            Text(description)
+            Text(L10n.string(description))
         } actions: {
             if let actionTitle, let action {
-                Button(actionTitle, action: action)
+                Button(L10n.string(actionTitle), action: action)
                     .buttonStyle(.borderedProminent)
             }
         }

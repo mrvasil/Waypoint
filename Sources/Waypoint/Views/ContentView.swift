@@ -153,7 +153,7 @@ struct ContentView: View {
                     .foregroundStyle(toast.tone.color)
                     .frame(width: 16, height: 16)
 
-                Text(toast.text)
+                Text(L10n.string(toast.text))
             }
                 .font(.callout.weight(.medium))
                 .foregroundStyle(.primary)

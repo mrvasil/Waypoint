@@ -10,7 +10,7 @@ public enum Parsers {
     public struct ParseFailure: LocalizedError {
         public let message: String
         public init(_ message: String) { self.message = message }
-        public var errorDescription: String? { message }
+        public var errorDescription: String? { L10n.string(message) }
     }
 
     // MARK: - Хелперы

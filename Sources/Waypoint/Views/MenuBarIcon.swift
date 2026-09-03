@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import WaypointCore
 
 /// Значок строки меню должен быть настоящим template-изображением.
 ///
@@ -11,7 +12,7 @@ struct MenuBarIcon: View {
 
     var body: some View {
         Image(nsImage: MenuBarIconImage.make(active: active))
-            .accessibilityLabel(active ? "Туннель работает" : "Туннель остановлен")
+            .accessibilityLabel(L10n.string(active ? "Туннель работает" : "Туннель остановлен"))
     }
 }
 

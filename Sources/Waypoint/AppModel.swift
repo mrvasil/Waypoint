@@ -295,8 +295,8 @@ final class AppModel {
         }
         presentToast(
             tunnels.count == 1
-                ? "Добавлен туннель «\(tunnels[0].name)»"
-                : "Добавлено туннелей: \(tunnels.count)",
+                ? L10n.format("Добавлен туннель «%@»", tunnels[0].name)
+                : L10n.format("Добавлено туннелей: %lld", tunnels.count),
             tone: .success
         )
     }
@@ -462,7 +462,7 @@ final class AppModel {
 
     func addVPNRoutingPolicy(_ policy: VPNRoutingPolicy) {
         apply { $0.vpnRoutingPolicies.append(policy) }
-        presentToast("Политика «\(policy.name)» добавлена", tone: .success)
+        presentToast(L10n.format("Политика «%@» добавлена", policy.name), tone: .success)
     }
 
     func updateVPNRoutingPolicy(_ policy: VPNRoutingPolicy) {
@@ -492,14 +492,14 @@ final class AppModel {
     func removeVPNRoutingPolicy(_ id: String) {
         let name = state.vpnRoutingPolicies.first(where: { $0.id == id })?.name ?? "Политика"
         apply { $0.vpnRoutingPolicies.removeAll { $0.id == id } }
-        presentToast("«\(name)» удалена", tone: .success)
+        presentToast(L10n.format("«%@» удалена", name), tone: .success)
     }
 
     // MARK: - Цепочки системного VPN
 
     func addVPNTunnelChain(_ chain: VPNTunnelChain) {
         apply { $0.vpnTunnelChains.append(chain) }
-        presentToast("Цепочка «\(chain.name)» создана", tone: .success)
+        presentToast(L10n.format("Цепочка «%@» создана", chain.name), tone: .success)
     }
 
     func updateVPNTunnelChain(_ chain: VPNTunnelChain) {
@@ -528,14 +528,17 @@ final class AppModel {
                 state.vpnFallbackGroups[index].members.removeAll { $0.target == .chain(id) }
             }
         }
-        presentToast("«\(name)» удалена; зависимые политики выключены", tone: .warning)
+        presentToast(
+            L10n.format("«%@» удалена; зависимые политики выключены", name),
+            tone: .warning
+        )
     }
 
     // MARK: - Fallback системного VPN
 
     func addVPNFallbackGroup(_ group: VPNFallbackGroup) {
         apply { $0.vpnFallbackGroups.append(group) }
-        presentToast("Fallback «\(group.name)» создан", tone: .success)
+        presentToast(L10n.format("Fallback «%@» создан", group.name), tone: .success)
     }
 
     func updateVPNFallbackGroup(_ group: VPNFallbackGroup) {
@@ -561,14 +564,17 @@ final class AppModel {
                 state.vpnRoutingPolicies[index].enabled = false
             }
         }
-        presentToast("«\(name)» удалён; зависимые политики выключены", tone: .warning)
+        presentToast(
+            L10n.format("«%@» удалён; зависимые политики выключены", name),
+            tone: .warning
+        )
     }
 
     // MARK: - Постоянные маршруты
 
     func addPersistentRoute(_ route: PersistentRoute) {
         apply { $0.persistentRoutes.append(route) }
-        presentToast("Маршрут «\(route.name)» добавлен", tone: .success)
+        presentToast(L10n.format("Маршрут «%@» добавлен", route.name), tone: .success)
     }
 
     func updatePersistentRoute(_ route: PersistentRoute) {
@@ -588,7 +594,7 @@ final class AppModel {
     func removePersistentRoute(_ id: String) {
         let name = state.persistentRoutes.first(where: { $0.id == id })?.name ?? "Маршрут"
         apply { $0.persistentRoutes.removeAll { $0.id == id } }
-        presentToast("«\(name)» удалён", tone: .success)
+        presentToast(L10n.format("«%@» удалён", name), tone: .success)
     }
 
     // MARK: - Системный VPN
@@ -830,8 +836,12 @@ final class AppModel {
             subscriptionErrors[subscription.id] = parseWarning(for: result)
             presentToast(
                 result.errors.isEmpty
-                    ? "Подписка «\(cleanName)» добавлена: \(result.tunnels.count)"
-                    : "Добавлено \(result.tunnels.count), не разобрано \(result.errors.count)",
+                    ? L10n.format("Подписка «%@» добавлена: %lld", cleanName, result.tunnels.count)
+                    : L10n.format(
+                        "Добавлено %lld, не разобрано %lld",
+                        result.tunnels.count,
+                        result.errors.count
+                    ),
                 tone: result.errors.isEmpty ? .success : .warning
             )
             return true
@@ -879,8 +889,12 @@ final class AppModel {
             if notify {
                 presentToast(
                     result.errors.isEmpty
-                        ? "«\(subscription.name)» обновлена: \(result.tunnels.count)"
-                        : "Обновлено \(result.tunnels.count), не разобрано \(result.errors.count)",
+                        ? L10n.format("«%@» обновлена: %lld", subscription.name, result.tunnels.count)
+                        : L10n.format(
+                            "Обновлено %lld, не разобрано %lld",
+                            result.tunnels.count,
+                            result.errors.count
+                        ),
                     tone: result.errors.isEmpty ? .success : .warning
                 )
             }
@@ -910,8 +924,8 @@ final class AppModel {
             let failedCount = ids.count - refreshedCount
             presentToast(
                 failedCount == 0
-                    ? "Подписки обновлены: \(refreshedCount)"
-                    : "Обновлено \(refreshedCount), с ошибкой \(failedCount)",
+                    ? L10n.format("Подписки обновлены: %lld", refreshedCount)
+                    : L10n.format("Обновлено %lld, с ошибкой %lld", refreshedCount, failedCount),
                 tone: failedCount == 0 ? .success : .warning
             )
         }
@@ -929,7 +943,7 @@ final class AppModel {
         }
         for id in removedIDs { testResults[id] = nil }
         subscriptionErrors[subscriptionID] = nil
-        presentToast("«\(name)» удалена", tone: .success)
+        presentToast(L10n.format("«%@» удалена", name), tone: .success)
     }
 
     private func startSubscriptionUpdates() {
@@ -952,20 +966,24 @@ final class AppModel {
 
     private func ensureSubscriptionHasTunnels(_ result: ParseResult) throws {
         guard !result.tunnels.isEmpty else {
-            let suffix = result.errors.first.map { ": \($0.message)" } ?? ""
-            throw SubscriptionLoadError(message: "В подписке не найдено туннелей\(suffix)")
+            let suffix = result.errors.first.map { ": \(L10n.string($0.message))" } ?? ""
+            throw SubscriptionLoadError(
+                message: L10n.format("В подписке не найдено туннелей%@", suffix)
+            )
         }
     }
 
     private func parseWarning(for result: ParseResult) -> String? {
-        result.errors.isEmpty ? nil : "Не разобрано записей: \(result.errors.count)"
+        result.errors.isEmpty
+            ? nil
+            : L10n.format("Не разобрано записей: %lld", result.errors.count)
     }
 
     // MARK: - Прочее
 
     func copyToClipboard(_ text: String) {
         Pasteboard.copy(text)
-        presentToast("Скопировано: \(text)", tone: .success)
+        presentToast(L10n.format("Скопировано: %@", text), tone: .success)
     }
 
     func dismissToast() {

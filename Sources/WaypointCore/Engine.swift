@@ -94,23 +94,23 @@ public enum EngineError: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .xrayNotFound:
-            return "Не найден бинарник xray. Установи: brew install xray"
+            return L10n.string("Не найден бинарник xray. Установи: brew install xray")
         case .noProxies:
-            return "Нет активных локальных прокси для запуска"
+            return L10n.string("Нет активных локальных прокси для запуска")
         case .invalidSystemVPNRoute(let issue):
-            return "Основной маршрут VPN недоступен: \(issue)"
+            return L10n.format("Основной маршрут VPN недоступен: %@", L10n.string(issue))
         case .noPhysicalInterface:
-            return "Не найден активный физический сетевой интерфейс"
+            return L10n.string("Не найден активный физический сетевой интерфейс")
         case .vpnHelperNotFound:
-            return "VPN helper не найден. Пересобери приложение через make install"
+            return L10n.string("VPN helper не найден. Пересобери приложение через make install")
         case .vpnLauncherNotFound:
-            return "VPN launcher не найден. Пересобери приложение через make install"
+            return L10n.string("VPN launcher не найден. Пересобери приложение через make install")
         case .noFreeVPNInterface:
-            return "Не удалось найти свободный системный utun-интерфейс"
+            return L10n.string("Не удалось найти свободный системный utun-интерфейс")
         case .startFailed(let m):
-            return m
+            return L10n.string(m)
         case .testFailed(let m):
-            return m
+            return L10n.string(m)
         }
     }
 }
@@ -262,7 +262,7 @@ public actor Engine {
     }
 
     private func log(_ text: String) {
-        logs.append(LogEntry(text))
+        logs.append(LogEntry(L10n.string(text)))
         trimLogs()
         scheduleLogFlush()
     }
@@ -387,11 +387,13 @@ public actor Engine {
         let configPath = workDir.appendingPathComponent("xray-config.json")
         try XrayConfig.encode(config).write(to: configPath)
 
-        log("▶ Запуск xray (\(xrayPath))")
+        log(L10n.format("▶ Запуск xray (%@)", xrayPath))
         if let bypass {
             let names = NetworkInterface.activeTunnels().map(\.name).joined(separator: ", ")
-            log("⇄ Обход туннелей: трафик привязан к \(bypass)" +
-                (names.isEmpty ? " (активных туннелей нет)" : " (активные туннели: \(names))"))
+            let tunnelSummary = names.isEmpty
+                ? L10n.string(" (активных туннелей нет)")
+                : L10n.format(" (активные туннели: %@)", names)
+            log(L10n.format("⇄ Обход туннелей: трафик привязан к %@", bypass) + tunnelSummary)
         } else {
             log("⇄ Обход туннелей выключен — трафик идёт по системным маршрутам")
         }
@@ -425,7 +427,7 @@ public actor Engine {
             try proc.run()
         } catch {
             lastError = error.localizedDescription
-            log("Ошибка запуска: \(error.localizedDescription)")
+            log(L10n.format("Ошибка запуска: %@", error.localizedDescription))
             emitStatus()
             throw EngineError.startFailed(error.localizedDescription)
         }
@@ -446,7 +448,7 @@ public actor Engine {
             logs.append(LogEntry(line))
             if activeMode == .systemVPN,
                let authorizationError = SystemVPNRuntime.authorizationError(from: line) {
-                lastError = authorizationError
+                lastError = L10n.string(authorizationError)
                 statusChanged = true
             }
         }
@@ -459,13 +461,18 @@ public actor Engine {
         guard process?.processIdentifier == processID else { return }
         if activeMode == .systemVPN {
             pollVPNRuntime()
-            log("■ Системный VPN завершился (code=\(code))")
+            log(L10n.format("■ Системный VPN завершился (code=%lld)", Int(code)))
             if code != 0, lastError == nil {
-                lastError = "Не удалось запустить или удержать системный VPN (code=\(code))"
+                lastError = L10n.format(
+                    "Не удалось запустить или удержать системный VPN (code=%lld)",
+                    Int(code)
+                )
             }
         } else {
-            log("■ xray завершился (code=\(code))")
-            if code != 0 { lastError = "xray завершился с кодом \(code)" }
+            log(L10n.format("■ xray завершился (code=%lld)", Int(code)))
+            if code != 0 {
+                lastError = L10n.format("xray завершился с кодом %lld", Int(code))
+            }
         }
         vpnMonitorTask?.cancel()
         vpnMonitorTask = nil
@@ -671,7 +678,9 @@ public actor Engine {
             let detail = validation.output.components(separatedBy: .newlines)
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .last(where: { !$0.isEmpty }) ?? "Xray отверг конфигурацию"
-            throw EngineError.startFailed("VPN-конфигурация отклонена до запуска: \(detail)")
+            throw EngineError.startFailed(
+                L10n.format("VPN-конфигурация отклонена до запуска: %@", detail)
+            )
         }
         try XrayConfig.encode(config).write(to: files.config, options: .atomic)
 
@@ -718,15 +727,15 @@ public actor Engine {
             Task { await self.handleExit(processID: p.processIdentifier, code: p.terminationStatus) }
         }
 
-        log("▶ Запрос системного VPN через \(interfaceName)")
-        log("⇄ Внешние соединения xray привязаны к \(bypass)")
+        log(L10n.format("▶ Запрос системного VPN через %@", interfaceName))
+        log(L10n.format("⇄ Внешние соединения xray привязаны к %@", bypass))
         log("🔐 При первом подключении macOS один раз установит VPN-сервис с правами администратора")
 
         do {
             try proc.run()
         } catch {
             lastError = error.localizedDescription
-            log("Ошибка запуска VPN helper: \(error.localizedDescription)")
+            log(L10n.format("Ошибка запуска VPN helper: %@", error.localizedDescription))
             emitStatus()
             throw EngineError.startFailed(error.localizedDescription)
         }
@@ -798,8 +807,10 @@ public actor Engine {
             let detail = validation.output.components(separatedBy: .newlines)
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .last(where: { !$0.isEmpty }) ?? "Xray отверг конфигурацию"
-            log("⚠ Новая VPN-конфигурация отклонена до переключения: \(detail)")
-            throw EngineError.startFailed("Изменения не применены; VPN продолжает работать: \(detail)")
+            log(L10n.format("⚠ Новая VPN-конфигурация отклонена до переключения: %@", detail))
+            throw EngineError.startFailed(
+                L10n.format("Изменения не применены; VPN продолжает работать: %@", detail)
+            )
         }
 
         var transitionBase = activeConfig
@@ -937,7 +948,9 @@ public actor Engine {
             guard result?.succeeded == true else {
                 vpnHotUpdateDirty = true
                 let detail = result?.output.trimmingCharacters(in: .whitespacesAndNewlines) ?? "нет ответа"
-                throw EngineError.startFailed("Не удалось подготовить новый VPN-маршрут: \(detail)")
+                throw EngineError.startFailed(
+                    L10n.format("Не удалось подготовить новый VPN-маршрут: %@", detail)
+                )
             }
             for outbound in added {
                 if let tag = outbound["tag"]?.stringValue {
@@ -960,7 +973,10 @@ public actor Engine {
             guard healthy else {
                 markVPNRecovered()
                 throw EngineError.startFailed(
-                    "Маршрут \(tag) не прошёл проверку связи; текущий VPN оставлен без изменений"
+                    L10n.format(
+                        "Маршрут %@ не прошёл проверку связи; текущий VPN оставлен без изменений",
+                        tag
+                    )
                 )
             }
         }
@@ -992,7 +1008,9 @@ public actor Engine {
                 vpnConfigurationState = .degraded
             }
             let detail = applyResult?.output.trimmingCharacters(in: .whitespacesAndNewlines) ?? "нет ответа"
-            throw EngineError.startFailed("Горячее обновление маршрутов отклонено: \(detail)")
+            throw EngineError.startFailed(
+                L10n.format("Горячее обновление маршрутов отклонено: %@", detail)
+            )
         }
 
         do {
@@ -1353,7 +1371,12 @@ public actor Engine {
                   vpnRuntimeToken == runtimeToken else { return }
         }
         if warmed > 0 {
-            log("✓ WireGuard: прогрето каналов \(warmed), keepalive удерживает сессии активными")
+            log(
+                L10n.format(
+                    "✓ WireGuard: прогрето каналов %lld, keepalive удерживает сессии активными",
+                    warmed
+                )
+            )
         }
     }
 
@@ -1400,11 +1423,23 @@ public actor Engine {
                 vpnFallbackSelectors[group.id] = selector
                 if case .terminal(let tag) = decision {
                     vpnTerminalOverrides.insert(group.id)
-                    log("⚠ Fallback «\(group.name)»: подтверждён отказ всех каналов, применено \(tag)")
+                    log(
+                        L10n.format(
+                            "⚠ Fallback «%@»: подтверждён отказ всех каналов, применено %@",
+                            group.name,
+                            tag
+                        )
+                    )
                 } else {
                     vpnTerminalOverrides.remove(group.id)
                     if previousTag != decision.outboundTag {
-                        log("⇄ Fallback «\(group.name)»: подтверждён канал \(fallbackMemberName(group: group, outboundTag: decision.outboundTag))")
+                        log(
+                            L10n.format(
+                                "⇄ Fallback «%@»: подтверждён канал %@",
+                                group.name,
+                                fallbackMemberName(group: group, outboundTag: decision.outboundTag)
+                            )
+                        )
                     }
                 }
             } else {
@@ -1528,7 +1563,12 @@ public actor Engine {
             vpnReady = true
             vpnReadyAt = Date()
             vpnConfigurationState = .stable
-            log("✓ Системный VPN активен: весь IPv4/IPv6 TCP/UDP-трафик направлен в \(vpnInterfaceName ?? "utun")")
+            log(
+                L10n.format(
+                    "✓ Системный VPN активен: весь IPv4/IPv6 TCP/UDP-трафик направлен в %@",
+                    vpnInterfaceName ?? "utun"
+                )
+            )
             emitStatus()
             Task { [weak self] in await self?.prepareVPNRuntimeAfterReady() }
         }

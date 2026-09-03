@@ -66,8 +66,8 @@ struct TunnelRow: View {
             }
             .buttonStyle(.plain)
             .disabled(testing)
-            .help(latencyHelp)
-            .accessibilityLabel("Задержка через \(tunnel.name): \(latencyText)")
+            .help(L10n.string(latencyHelp))
+            .accessibilityLabel(L10n.format("Задержка через %@: %@", tunnel.name, latencyText))
 
             Menu {
                 Button("Скопировать адрес", systemImage: "doc.on.doc") {
@@ -127,9 +127,9 @@ struct TunnelRow: View {
 
     private var latencyText: String {
         if testing { return "…" }
-        guard let result else { return "Пинг" }
-        guard result.ok, let milliseconds = result.latencyMs else { return "Нет связи" }
-        return "\(milliseconds) мс"
+        guard let result else { return L10n.string("Пинг") }
+        guard result.ok, let milliseconds = result.latencyMs else { return L10n.string("Нет связи") }
+        return L10n.format("%lld мс", milliseconds)
     }
 
     private var latencyColor: Color {
@@ -151,9 +151,9 @@ struct TunnelRow: View {
             let exit = [result.ip, result.loc].compactMap { $0 }.joined(separator: " · ")
             return exit.isEmpty
                 ? "Реальный HTTP-запрос прошёл через туннель"
-                : "Выход через \(exit)"
+                : L10n.format("Выход через %@", exit)
         }
-        return result.error ?? "Туннель не ответил"
+        return result.error.map { L10n.string($0) } ?? L10n.string("Туннель не ответил")
     }
 }
 
@@ -208,10 +208,10 @@ private struct SystemVPNTunnelButton: View {
         .help(
             isSelected
                 ? "Используется системным VPN"
-                : "Использовать «\(tunnelName)» для системного VPN"
+                : L10n.format("Использовать «%@» для системного VPN", tunnelName)
         )
-        .accessibilityLabel("Туннель системного VPN: \(tunnelName)")
-        .accessibilityValue(isSelected ? "Выбран" : "Не выбран")
+        .accessibilityLabel(L10n.format("Туннель системного VPN: %@", tunnelName))
+        .accessibilityValue(L10n.string(isSelected ? "Выбран" : "Не выбран"))
         .accessibilityHint(
             isSelected
                 ? "Сейчас используется системным VPN"

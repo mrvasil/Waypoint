@@ -61,8 +61,14 @@ struct VPNRoutingPolicySheet: View {
                     }
 
                     HStack(spacing: 12) {
-                        Label("\(parsedTargets.domains.count) доменов", systemImage: "globe")
-                        Label("\(parsedTargets.ips.count) сетей", systemImage: "network")
+                        Label(
+                            L10n.format("%lld доменов", parsedTargets.domains.count),
+                            systemImage: "globe"
+                        )
+                        Label(
+                            L10n.format("%lld сетей", parsedTargets.ips.count),
+                            systemImage: "network"
+                        )
                         Spacer()
                         Text("Порядок строк внутри списка не меняет приоритет")
                             .foregroundStyle(.tertiary)
@@ -71,7 +77,7 @@ struct VPNRoutingPolicySheet: View {
                     .foregroundStyle(.secondary)
 
                     if !parsedTargets.invalidLines.isEmpty {
-                        Label(invalidTargetsDescription, systemImage: "exclamationmark.triangle.fill")
+                        Label(L10n.string(invalidTargetsDescription), systemImage: "exclamationmark.triangle.fill")
                             .font(.caption)
                             .foregroundStyle(.orange)
                             .fixedSize(horizontal: false, vertical: true)
@@ -98,7 +104,7 @@ struct VPNRoutingPolicySheet: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(model.state.vpnRouteTargetName(target))
                                 .font(.callout.weight(.semibold))
-                            Text(targetIssue ?? targetDescription)
+                            Text(L10n.string(targetIssue ?? targetDescription))
                                 .font(.caption)
                                 .foregroundStyle(targetIssue == nil ? Color.secondary : Color.orange)
                         }
@@ -118,9 +124,9 @@ struct VPNRoutingPolicySheet: View {
     private var invalidTargetsDescription: String {
         let examples = parsedTargets.invalidLines.prefix(3).joined(separator: ", ")
         let suffix = parsedTargets.invalidLines.count > 3
-            ? " и ещё \(parsedTargets.invalidLines.count - 3)"
+            ? L10n.format(" и ещё %lld", parsedTargets.invalidLines.count - 3)
             : ""
-        return "Не удалось распознать: \(examples)\(suffix)"
+        return L10n.format("Не удалось распознать: %@%@", examples, suffix)
     }
 
     private var targetDescription: String {
@@ -223,7 +229,7 @@ struct VPNTunnelChainSheet: View {
                     }
 
                     if let validationIssue {
-                        Label(validationIssue, systemImage: "exclamationmark.triangle.fill")
+                        Label(L10n.string(validationIssue), systemImage: "exclamationmark.triangle.fill")
                             .font(.caption)
                             .foregroundStyle(.orange)
                     }
@@ -271,7 +277,7 @@ struct VPNTunnelChainSheet: View {
                 .frame(width: 24, height: 24)
                 .background(.quaternary, in: Circle())
 
-            Picker("Узел \(index + 1)", selection: $tunnelIds[index]) {
+            Picker(L10n.format("Узел %lld", index + 1), selection: $tunnelIds[index]) {
                 tunnelPickerOptions
             }
             .labelsHidden()
@@ -313,7 +319,7 @@ struct VPNTunnelChainSheet: View {
     }
 
     private func pathToken(_ title: String, symbol: String) -> some View {
-        Label(title, systemImage: symbol)
+        Label(L10n.string(title), systemImage: symbol)
             .font(.caption.weight(.medium))
             .lineLimit(1)
             .padding(.horizontal, 9)
@@ -430,7 +436,7 @@ struct VPNFallbackGroupSheet: View {
                     }
 
                     if let validationIssue {
-                        Label(validationIssue, systemImage: "exclamationmark.triangle.fill")
+                        Label(L10n.string(validationIssue), systemImage: "exclamationmark.triangle.fill")
                             .font(.caption)
                             .foregroundStyle(.orange)
                     }

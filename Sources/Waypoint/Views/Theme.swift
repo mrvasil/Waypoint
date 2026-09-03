@@ -1,4 +1,5 @@
 import SwiftUI
+import WaypointCore
 
 enum Theme {
     static let corner: CGFloat = 16
@@ -61,17 +62,17 @@ struct SectionHeader: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(title)
+                Text(L10n.string(title))
                     .font(.title3.weight(.semibold))
                 if let subtitle {
-                    Text(subtitle)
+                    Text(L10n.string(subtitle))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
             Spacer()
             if let actionTitle, let action {
-                Button(actionTitle, action: action)
+                Button(L10n.string(actionTitle), action: action)
             }
         }
     }

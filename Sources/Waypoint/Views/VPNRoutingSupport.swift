@@ -61,7 +61,7 @@ extension AppModel {
         }
 
         let name = state.vpnFallbackRuntimeName(group: group, status: status)
-        guard name != "Маршрут определяется" else {
+        guard name != L10n.string("Маршрут определяется") else {
             return VPNFallbackRuntimePresentation(
                 text: "Определяем активный маршрут…",
                 tone: .waiting
@@ -69,12 +69,12 @@ extension AppModel {
         }
         if status.phase == .warming {
             return VPNFallbackRuntimePresentation(
-                text: "Сразу через: \(name) · проверяем резерв",
+                text: L10n.format("Сразу через: %@ · проверяем резерв", name),
                 tone: .waiting
             )
         }
         return VPNFallbackRuntimePresentation(
-            text: "Сейчас: \(name)",
+            text: L10n.format("Сейчас: %@", name),
             tone: status.phase == .terminal ? .waiting : .active
         )
     }
@@ -103,7 +103,7 @@ struct VPNFallbackRuntimeLabel: View {
                 )
                 .contentTransition(.symbolEffect(.replace))
 
-            Text(presentation.text)
+            Text(L10n.string(presentation.text))
                 .lineLimit(1)
                 .contentTransition(.opacity)
         }
@@ -120,7 +120,9 @@ struct VPNFallbackRuntimeLabel: View {
             value: presentation
         )
         .help("Текущий выбор Xray для новых соединений. Уже открытые соединения продолжают идти по прежнему маршруту.")
-        .accessibilityLabel("\(presentation.text). Выбор применяется к новым соединениям")
+        .accessibilityLabel(
+            L10n.format("%@. Выбор применяется к новым соединениям", presentation.text)
+        )
     }
 }
 
@@ -151,10 +153,10 @@ extension Tunnel {
 extension VPNRouteTarget.Kind {
     var routingTitle: String {
         switch self {
-        case .direct: "Напрямую"
-        case .block: "Блокировать"
-        case .tunnel: "Туннель"
-        case .chain: "Цепочка"
+        case .direct: L10n.string("Напрямую")
+        case .block: L10n.string("Блокировать")
+        case .tunnel: L10n.string("Туннель")
+        case .chain: L10n.string("Цепочка")
         case .fallback: "Fallback"
         }
     }
@@ -183,8 +185,8 @@ extension VPNRouteTarget.Kind {
 extension VPNFallbackFinalAction {
     var routingTitle: String {
         switch self {
-        case .block: "Блокировать трафик"
-        case .direct: "Выпустить напрямую"
+        case .block: L10n.string("Блокировать трафик")
+        case .direct: L10n.string("Выпустить напрямую")
         }
     }
 
@@ -197,15 +199,15 @@ extension AppState {
     func vpnRouteTargetName(_ target: VPNRouteTarget) -> String {
         switch target.kind {
         case .direct:
-            return "Напрямую"
+            return L10n.string("Напрямую")
         case .block:
-            return "Блокировать"
+            return L10n.string("Блокировать")
         case .tunnel:
-            return tunnel(id: target.referenceId)?.name ?? "Туннель недоступен"
+            return tunnel(id: target.referenceId)?.name ?? L10n.string("Туннель недоступен")
         case .chain:
-            return vpnTunnelChain(id: target.referenceId)?.name ?? "Цепочка недоступна"
+            return vpnTunnelChain(id: target.referenceId)?.name ?? L10n.string("Цепочка недоступна")
         case .fallback:
-            return vpnFallbackGroup(id: target.referenceId)?.name ?? "Fallback недоступен"
+            return vpnFallbackGroup(id: target.referenceId)?.name ?? L10n.string("Fallback недоступен")
         }
     }
 
@@ -230,11 +232,11 @@ extension AppState {
         }
         switch status.selectedOutboundTag {
         case "direct":
-            return "Напрямую · резервное действие"
+            return L10n.string("Напрямую · резервное действие")
         case "block":
-            return "Блокировка · резервное действие"
+            return L10n.string("Блокировка · резервное действие")
         default:
-            return "Маршрут определяется"
+            return L10n.string("Маршрут определяется")
         }
     }
 
@@ -260,7 +262,7 @@ extension AppState {
             }
             return VPNMainRoutePresentation(
                 name: tunnel.name,
-                detail: "Обычный туннель · \(tunnel.type.uppercased())",
+                detail: L10n.format("Обычный туннель · %@", tunnel.type.uppercased()),
                 symbol: tunnel.routingSymbol,
                 color: tunnel.routingColor
             )
@@ -275,7 +277,7 @@ extension AppState {
             }
             return VPNMainRoutePresentation(
                 name: chain.name,
-                detail: "Цепочка · \(chain.tunnelIds.count) узла",
+                detail: L10n.format("Цепочка · %lld узла", chain.tunnelIds.count),
                 symbol: "link",
                 color: .cyan
             )
@@ -290,7 +292,7 @@ extension AppState {
             }
             return VPNMainRoutePresentation(
                 name: group.name,
-                detail: "Fallback · \(group.members.count) варианта",
+                detail: L10n.format("Fallback · %lld варианта", group.members.count),
                 symbol: "arrow.trianglehead.branch",
                 color: .orange
             )

@@ -3,6 +3,7 @@ import WaypointCore
 
 struct SettingsSheet: View {
     @Environment(AppModel.self) private var model
+    @AppStorage(AppLanguage.storageKey) private var appLanguageValue = AppLanguage.system.rawValue
 
     @State private var xrayPath = ""
     @State private var logLevel = "warning"
@@ -22,13 +23,32 @@ struct SettingsSheet: View {
             onConfirm: save
         ) {
             VStack(spacing: 16) {
+                FormGroup("Интерфейс приложения", symbol: "globe", color: .purple) {
+                    LabeledField("Язык интерфейса") {
+                        Picker("Язык интерфейса", selection: $appLanguageValue) {
+                            ForEach(AppLanguage.allCases) { language in
+                                Text(language.displayName).tag(language.rawValue)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 180, alignment: .leading)
+                    }
+
+                    Text("Изменения применяются сразу ко всем окнам и меню.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+
                 FormGroup("Движок Xray", symbol: "terminal.fill", color: .blue) {
                     LabeledField("Путь к исполняемому файлу") {
                         TextField("/opt/homebrew/bin/xray", text: $xrayPath)
                             .textFieldStyle(.roundedBorder)
                     }
 
-                    Label(detectedXray, systemImage: model.xrayPath == nil ? "exclamationmark.circle" : "checkmark.circle.fill")
+                    Label(
+                        L10n.string(detectedXray),
+                        systemImage: model.xrayPath == nil ? "exclamationmark.circle" : "checkmark.circle.fill"
+                    )
                         .font(.caption)
                         .foregroundStyle(model.xrayPath == nil ? .orange : .secondary)
                         .textSelection(.enabled)
@@ -47,7 +67,7 @@ struct SettingsSheet: View {
                 FormGroup("Обход системных VPN", symbol: "arrow.triangle.turn.up.right.diamond.fill", color: .cyan) {
                     Toggle("Направлять Xray через физический интерфейс", isOn: $bypassTunnels)
 
-                    Text(bypassDescription)
+                    Text(L10n.string(bypassDescription))
                         .font(.caption)
                         .foregroundStyle(bypassWarning ? .orange : .secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -69,7 +89,7 @@ struct SettingsSheet: View {
 
     private var detectedXray: String {
         guard let path = model.xrayPath else {
-            return "Xray не найден — установите через brew install xray"
+            return L10n.string("Xray не найден — установите через brew install xray")
         }
 
         let conciseVersion = model.xrayVersion?
@@ -94,20 +114,25 @@ struct SettingsSheet: View {
 
     private var bypassDescription: String {
         guard bypassTunnels else {
-            return "Обход выключен — трафик следует системным маршрутам."
+            return L10n.string("Обход выключен — трафик следует системным маршрутам.")
         }
         guard let interface = effectiveInterface else {
-            return "Физический интерфейс не найден — обход не применится."
+            return L10n.string("Физический интерфейс не найден — обход не применится.")
         }
-        guard let status else { return "Выбран интерфейс \(interface)." }
+        guard let status else {
+            return L10n.format("Выбран интерфейс %@.", interface)
+        }
 
         let tunnelNames = status.tunnels.map(\.name).joined(separator: ", ")
         if status.tunnelCapturedRoute {
-            return "Выбран \(interface). Системный маршрут перехвачен туннелем, обход активен."
+            return L10n.format(
+                "Выбран %@. Системный маршрут перехвачен туннелем, обход активен.",
+                interface
+            )
         }
         return tunnelNames.isEmpty
-            ? "Выбран \(interface). Активных системных туннелей сейчас нет."
-            : "Выбран \(interface). Обнаружены: \(tunnelNames)."
+            ? L10n.format("Выбран %@. Активных системных туннелей сейчас нет.", interface)
+            : L10n.format("Выбран %@. Обнаружены: %@.", interface, tunnelNames)
     }
 
     private func load() {

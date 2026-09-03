@@ -6,7 +6,7 @@ enum Net {
 
     struct NetError: LocalizedError {
         let message: String
-        var errorDescription: String? { message }
+        var errorDescription: String? { L10n.string(message) }
     }
 
     /// Свободный TCP-порт: слушаем на нулевом порту, узнаём выданный ядром и
@@ -191,7 +191,7 @@ enum Net {
         let statusLine = text[..<(text.firstIndex(of: "\r") ?? text.startIndex)]
         if let code = statusLine.split(separator: " ").dropFirst().first.flatMap({ Int($0) }),
            !(200..<400).contains(code) {
-            throw NetError(message: "HTTP \(code) через прокси")
+            throw NetError(message: L10n.format("HTTP %lld через прокси", code))
         }
         return String(text[sep.upperBound...])
     }
@@ -212,7 +212,12 @@ enum Net {
 
         let (data, response) = try await session.data(for: request)
         if let http = response as? HTTPURLResponse, http.statusCode != 200 {
-            throw NetError(message: "HTTP \(http.statusCode) при загрузке подписки")
+            throw NetError(
+                message: L10n.format(
+                    "HTTP %lld при загрузке подписки",
+                    http.statusCode
+                )
+            )
         }
         guard let text = String(data: data, encoding: .utf8) else {
             throw NetError(message: "Подписка не в текстовом формате")

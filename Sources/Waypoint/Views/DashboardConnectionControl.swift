@@ -1,4 +1,5 @@
 import SwiftUI
+import WaypointCore
 
 struct ToolbarConnectionControls: ToolbarContent {
     @Environment(AppModel.self) private var model
@@ -60,9 +61,9 @@ private struct ToolbarConnectionButton: View {
 
         var accessibilityLabel: String {
             switch self {
-            case .inactive: "выключен"
-            case .connecting: "подключается"
-            case .active: "включен"
+            case .inactive: L10n.string("выключен")
+            case .connecting: L10n.string("подключается")
+            case .active: L10n.string("включен")
             }
         }
     }
@@ -89,9 +90,11 @@ private struct ToolbarConnectionButton: View {
                 )
         }
         .disabled(disabled)
-        .help("\(actionTitle) · сейчас \(state.accessibilityLabel)")
-        .accessibilityLabel("\(title), \(state.accessibilityLabel)")
-        .accessibilityHint(actionTitle)
+        .help(L10n.format("%@ · сейчас %@", L10n.string(actionTitle), state.accessibilityLabel))
+        .accessibilityLabel(
+            L10n.format("%@, %@", L10n.string(title), state.accessibilityLabel)
+        )
+        .accessibilityHint(L10n.string(actionTitle))
     }
 }
 
@@ -108,9 +111,9 @@ struct DashboardConnectionControl: View {
 
         var label: String {
             switch self {
-            case .inactive: "ВЫКЛЮЧЕН"
-            case .connecting: "ПОДКЛЮЧЕНИЕ"
-            case .active: "ВКЛЮЧЕН"
+            case .inactive: L10n.string("ВЫКЛЮЧЕН")
+            case .connecting: L10n.string("ПОДКЛЮЧЕНИЕ")
+            case .active: L10n.string("ВКЛЮЧЕН")
             }
         }
 
@@ -143,7 +146,7 @@ struct DashboardConnectionControl: View {
                 controlSymbol
 
                 VStack(alignment: .leading, spacing: 7) {
-                    Text(title)
+                    Text(L10n.string(title))
                         .font(.headline)
                         .foregroundStyle(.primary)
                         .lineLimit(1)
@@ -155,14 +158,14 @@ struct DashboardConnectionControl: View {
                         .padding(.vertical, 3)
                         .background(state.color.opacity(0.10), in: Capsule())
 
-                    Text(detail)
+                    Text(L10n.string(detail))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
                     HStack(spacing: 6) {
-                        Text(actionTitle)
+                        Text(L10n.string(actionTitle))
                             .font(.callout.weight(.semibold))
                         Image(systemName: state.isActive ? "power" : "arrow.right")
                             .font(.caption.weight(.bold))
@@ -191,9 +194,16 @@ struct DashboardConnectionControl: View {
         .onHover { isHovering = $0 }
         .animation(reduceMotion ? nil : .snappy(duration: 0.24), value: state)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: isHovering)
-        .accessibilityLabel("\(title), \(state.label.lowercased()), \(detail)")
-        .accessibilityHint(actionTitle)
-        .help("\(actionTitle) · \(title)")
+        .accessibilityLabel(
+            L10n.format(
+                "%@, %@, %@",
+                L10n.string(title),
+                state.label.lowercased(),
+                L10n.string(detail)
+            )
+        )
+        .accessibilityHint(L10n.string(actionTitle))
+        .help(L10n.format("%@ · %@", L10n.string(actionTitle), L10n.string(title)))
     }
 
     private var controlSymbol: some View {

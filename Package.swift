@@ -3,6 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "Waypoint",
+    defaultLocalization: "ru",
     platforms: [.macOS(.v15)],
     products: [
         .executable(name: "Waypoint", targets: ["Waypoint"]),
@@ -13,7 +14,11 @@ let package = Package(
     ],
     targets: [
         // Логика вынесена в библиотеку, чтобы её использовали и приложение, и тесты.
-        .target(name: "WaypointCore", path: "Sources/WaypointCore"),
+        .target(
+            name: "WaypointCore",
+            path: "Sources/WaypointCore",
+            resources: [.process("Resources")]
+        ),
         .executableTarget(
             name: "Waypoint",
             dependencies: ["WaypointCore"],

@@ -1,5 +1,6 @@
 import Carbon.HIToolbox
 import Foundation
+import WaypointCore
 
 /// Системный hotkey работает, даже когда окно закрыто, приложение скрыто или
 /// фокус находится в другой программе. Carbon не требует Accessibility access.
@@ -12,9 +13,9 @@ final class GlobalHotKeyController {
         var errorDescription: String? {
             switch self {
             case .handler(let status):
-                "Не удалось подготовить глобальный хоткей (код \(status))"
+                L10n.format("Не удалось подготовить глобальный хоткей (код %lld)", Int(status))
             case .hotKey(let status):
-                "⌘⇧V уже занят другой программой (код \(status))"
+                L10n.format("⌘⇧V уже занят другой программой (код %lld)", Int(status))
             }
         }
     }
