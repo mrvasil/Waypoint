@@ -2,55 +2,55 @@
 import PackageDescription
 
 let package = Package(
-    name: "TunnelProxyHub",
+    name: "Waypoint",
     platforms: [.macOS(.v15)],
     products: [
-        .executable(name: "TunnelProxyHub", targets: ["TunnelProxyHub"]),
-        .executable(name: "TPHVPNHelper", targets: ["TPHVPNHelper"]),
-        .executable(name: "TPHVPNLauncher", targets: ["TPHVPNLauncher"]),
-        .executable(name: "tph-vpn-lifecycle-tests", targets: ["TPHVPNLifecycleTests"]),
-        .executable(name: "tph-tests", targets: ["TPHTests"]),
+        .executable(name: "Waypoint", targets: ["Waypoint"]),
+        .executable(name: "WaypointVPNHelper", targets: ["WaypointVPNHelper"]),
+        .executable(name: "WaypointVPNLauncher", targets: ["WaypointVPNLauncher"]),
+        .executable(name: "waypoint-vpn-lifecycle-tests", targets: ["WaypointVPNLifecycleTests"]),
+        .executable(name: "waypoint-tests", targets: ["WaypointTests"]),
     ],
     targets: [
         // Логика вынесена в библиотеку, чтобы её использовали и приложение, и тесты.
-        .target(name: "TPHCore", path: "Sources/TPHCore"),
+        .target(name: "WaypointCore", path: "Sources/WaypointCore"),
         .executableTarget(
-            name: "TunnelProxyHub",
-            dependencies: ["TPHCore"],
-            path: "Sources/TunnelProxyHub",
+            name: "Waypoint",
+            dependencies: ["WaypointCore"],
+            path: "Sources/Waypoint",
             linkerSettings: [.linkedFramework("Carbon")]
         ),
         // Минимальный привилегированный процесс: создаёт utun и системные
         // маршруты, затем запускает xray уже с uid/gid обычного пользователя.
         .executableTarget(
-            name: "TPHVPNHelper",
-            dependencies: ["TPHVPNLifecycle"],
-            path: "Sources/TPHVPNHelper"
+            name: "WaypointVPNHelper",
+            dependencies: ["WaypointVPNLifecycle"],
+            path: "Sources/WaypointVPNHelper"
         ),
         .target(
-            name: "TPHVPNLifecycle",
-            path: "Sources/TPHVPNLifecycle",
+            name: "WaypointVPNLifecycle",
+            path: "Sources/WaypointVPNLifecycle",
             publicHeadersPath: "include"
         ),
         .executableTarget(
-            name: "TPHVPNLifecycleTests",
-            dependencies: ["TPHVPNLifecycle"],
-            path: "Sources/TPHVPNLifecycleTests"
+            name: "WaypointVPNLifecycleTests",
+            dependencies: ["WaypointVPNLifecycle"],
+            path: "Sources/WaypointVPNLifecycleTests"
         ),
         // Непривилегированный launcher один раз устанавливает ограниченный LaunchDaemon,
         // а при последующих запусках общается с ним через Unix socket.
         .executableTarget(
-            name: "TPHVPNLauncher",
-            path: "Sources/TPHVPNLauncher",
+            name: "WaypointVPNLauncher",
+            path: "Sources/WaypointVPNLauncher",
             linkerSettings: [.linkedFramework("Security")]
         ),
         // Тесты — отдельный исполняемый таргет, а не .testTarget: XCTest и
         // swift-testing поставляются только с полным Xcode, которого здесь нет.
-        // Запуск: swift run tph-tests
+        // Запуск: swift run waypoint-tests
         .executableTarget(
-            name: "TPHTests",
-            dependencies: ["TPHCore"],
-            path: "Sources/TPHTests"
+            name: "WaypointTests",
+            dependencies: ["WaypointCore"],
+            path: "Sources/WaypointTests"
         ),
     ]
 )

@@ -7,27 +7,27 @@ set -euo pipefail
 
 CONFIG="${1:-release}"
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-APP="$ROOT/build/TunnelProxyHub.app"
+APP="$ROOT/build/Waypoint.app"
 
 cd "$ROOT"
 echo "▶ Сборка ($CONFIG)…"
-swift build -c "$CONFIG" --product TunnelProxyHub
-swift build -c "$CONFIG" --product TPHVPNHelper
-swift build -c "$CONFIG" --product TPHVPNLauncher
+swift build -c "$CONFIG" --product Waypoint
+swift build -c "$CONFIG" --product WaypointVPNHelper
+swift build -c "$CONFIG" --product WaypointVPNLauncher
 
 BIN_DIR="$(swift build -c "$CONFIG" --show-bin-path)"
-BIN="$BIN_DIR/TunnelProxyHub"
-VPN_HELPER="$BIN_DIR/TPHVPNHelper"
-VPN_LAUNCHER="$BIN_DIR/TPHVPNLauncher"
+BIN="$BIN_DIR/Waypoint"
+VPN_HELPER="$BIN_DIR/WaypointVPNHelper"
+VPN_LAUNCHER="$BIN_DIR/WaypointVPNLauncher"
 [ -f "$BIN" ] || { echo "не найден бинарник: $BIN" >&2; exit 1; }
 [ -f "$VPN_HELPER" ] || { echo "не найден VPN helper: $VPN_HELPER" >&2; exit 1; }
 [ -f "$VPN_LAUNCHER" ] || { echo "не найден VPN launcher: $VPN_LAUNCHER" >&2; exit 1; }
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Helpers"
-cp "$BIN" "$APP/Contents/MacOS/TunnelProxyHub"
-cp "$VPN_HELPER" "$APP/Contents/Helpers/TPHVPNHelper"
-cp "$VPN_LAUNCHER" "$APP/Contents/Helpers/TPHVPNLauncher"
+cp "$BIN" "$APP/Contents/MacOS/Waypoint"
+cp "$VPN_HELPER" "$APP/Contents/Helpers/WaypointVPNHelper"
+cp "$VPN_LAUNCHER" "$APP/Contents/Helpers/WaypointVPNLauncher"
 
 # Иконка приложения
 if [ -f "$ROOT/Resources/AppIcon.icns" ]; then
@@ -39,13 +39,13 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleName</key>            <string>Tunnel Proxy Hub</string>
-    <key>CFBundleDisplayName</key>     <string>Tunnel Proxy Hub</string>
-    <key>CFBundleIdentifier</key>      <string>ru.mrvasil.tunnel-proxy-hub</string>
+    <key>CFBundleName</key>            <string>Waypoint</string>
+    <key>CFBundleDisplayName</key>     <string>Waypoint</string>
+    <key>CFBundleIdentifier</key>      <string>ru.mrvasil.waypoint</string>
     <key>CFBundleVersion</key>         <string>1.0</string>
     <key>CFBundleShortVersionString</key><string>1.0</string>
     <key>CFBundlePackageType</key>     <string>APPL</string>
-    <key>CFBundleExecutable</key>      <string>TunnelProxyHub</string>
+    <key>CFBundleExecutable</key>      <string>Waypoint</string>
     <key>CFBundleIconFile</key>        <string>AppIcon</string>
     <key>LSMinimumSystemVersion</key>  <string>15.0</string>
     <key>NSHighResolutionCapable</key> <true/>
@@ -56,9 +56,9 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 PLIST
 
 # Вложенный helper подписывается первым, затем весь bundle.
-codesign --force --sign - "$APP/Contents/Helpers/TPHVPNHelper" 2>/dev/null \
+codesign --force --sign - "$APP/Contents/Helpers/WaypointVPNHelper" 2>/dev/null \
     || echo "⚠ подпись VPN helper не удалась (не критично)"
-codesign --force --sign - "$APP/Contents/Helpers/TPHVPNLauncher" 2>/dev/null \
+codesign --force --sign - "$APP/Contents/Helpers/WaypointVPNLauncher" 2>/dev/null \
     || echo "⚠ подпись VPN launcher не удалась (не критично)"
 
 # Подпись ad-hoc: без неё macOS не даёт приложению сетевой доступ и

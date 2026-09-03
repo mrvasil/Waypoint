@@ -1,234 +1,214 @@
-# Waypoint
+<p align="center">
+  <img src="Resources/AppIcon.png" width="128" height="128" alt="Waypoint icon">
+</p>
 
-Нативный macOS-клиент на SwiftUI для системного VPN и локальных прокси
-**SOCKS5 / HTTP** на движке [xray-core](https://github.com/XTLS/Xray-core).
-Поддерживает умную маршрутизацию, цепочки туннелей и автоматический fallback.
+<h1 align="center">Waypoint</h1>
 
-Ты добавляешь туннели (WireGuard, VLESS, VMess, Trojan, Shadowsocks, или подписку по URL),
-создаёшь локальные порты и выбираешь «какой туннель → на какой порт». Потом вписываешь
-`127.0.0.1:порт` в браузер или Telegram.
+<p align="center">
+  <strong>Route every Mac connection with intent.</strong><br>
+  A native VPN and local proxy client built for flexible routes, fast recovery,
+  and everyday control.
+</p>
 
-```
-[ vless:// / wg / подписка ]  ──►  xray  ──►  socks5://127.0.0.1:10808  ──►  браузер / Telegram
-        (туннели)                            http://127.0.0.1:10809
-```
+<p align="center">
+  <img alt="macOS 15+" src="https://img.shields.io/badge/macOS-15%2B-111111?style=flat-square&logo=apple&logoColor=white">
+  <img alt="Swift 6" src="https://img.shields.io/badge/Swift-6-F05138?style=flat-square&logo=swift&logoColor=white">
+  <img alt="Xray Core" src="https://img.shields.io/badge/powered%20by-Xray-4B7BEC?style=flat-square">
+  <img alt="Status" src="https://img.shields.io/badge/status-active%20development-34C759?style=flat-square">
+</p>
 
-## Что поддерживается
+---
 
-**Входящие туннели (upstream):**
-- `vless://` — TCP / WS / gRPC / HTTPUpgrade / xhttp, TLS / Reality, flow (vision)
-- `vmess://` — формат v2rayN (base64 JSON)
-- `trojan://`
-- `ss://` — Shadowsocks (оба формата ссылки)
-- **WireGuard** — текст конфига `wg-quick` (`[Interface]` / `[Peer]`)
-- `socks://` / `http://` — внешний прокси как туннель
-- **Подписка** — URL, внутри base64-список ссылок (или обычный список)
+Waypoint brings system-wide VPN, per-app proxy endpoints, traffic policies,
+tunnel chains, and automatic failover into one focused macOS app. Add a link,
+a WireGuard profile, or a subscription; then decide exactly where traffic goes.
 
-**Локальные прокси (downstream):**
-- **SOCKS5** (с UDP) и **HTTP**, на `127.0.0.1` или `0.0.0.0`, с опциональной авторизацией
-- отдельный профиль маршрутизации для каждого порта: весь трафик через туннель,
-  `geoip:ru` + `geosite:category-ru` напрямую или полностью прямой маршрут
+| | What it gives you |
+|---|---|
+| 🛡 **System VPN** | Routes all Mac TCP/UDP traffic through a selected tunnel, chain, or fallback group. |
+| ⤴ **Local proxies** | Independent SOCKS5 and HTTP endpoints for browsers, Telegram, development tools, or other apps. |
+| ◫ **Traffic policies** | Route domains, CIDRs, `geosite:*`, and `geoip:*` to a tunnel, chain, fallback, Direct, or Block. |
+| ⛓ **Tunnel chains** | Compose WireGuard and Xray transports into multi-hop paths such as WG → VLESS. |
+| ⑂ **Smart fallback** | Start on the first route immediately, measure alternatives in the background, and switch only after confirmation. |
+| ◉ **Native control** | SwiftUI interface, menu bar controls, live tunnel latency, and global **⌘⇧V** VPN toggle. |
 
-**Обход системных VPN и туннелей** (включён по умолчанию): работает поверх активных
-Happ / WireGuard / Tailscale / системного VPN — трафик идёт напрямую, а не внутрь
-чужого туннеля.
-
-## Требования
-
-- **xray** в системе. На macOS: `brew install xray`. Приложение само ищет бинарник в
-  `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin` и `$PATH`; путь можно задать вручную в ⚙.
-- macOS 15+, Swift 6 (Command Line Tools достаточно).
-
-## Сборка и запуск
+## Quick start
 
 ```bash
-make install     # собрать и положить в /Applications
-open -a TunnelProxyHub
+brew install xray
+git clone https://github.com/mrvasil/Waypoint.git
+cd Waypoint
+make install
 ```
 
-Остальные команды:
+Launch the app:
 
-| Команда | Что делает |
-|---|---|
-| `make run` | запустить из исходников |
-| `make test` | прогнать проверки (81 штука) |
-| `make live` | живая проверка: xray, реальный туннель, обход VPN |
-| `make app` | собрать `build/TunnelProxyHub.app` |
-| `make icon` | пересобрать `.icns` из `Resources/AppIcon.png` |
-| `make clean` | удалить артефакты сборки |
+```bash
+open -a Waypoint
+```
 
-## Как пользоваться
+The first system VPN connection asks for an administrator password once. Waypoint
+installs a narrow privileged service for `utun` and route management; later launches
+reuse it without asking again.
 
-1. **Добавь туннель** → «Добавить» в блоке «Туннели».
-   - Вкладка «Ссылки / WireGuard»: вставь ссылки (каждая с новой строки), конфиг
-     WireGuard целиком или base64-блок подписки. «Предпросмотр» покажет, что распозналось.
-   - Вкладка «Подписка (URL)»: укажи название и URL — хаб создаст отдельную
-     группу, загрузит её узлы и будет обновлять их при запуске и каждые 15 минут.
-   - Подписку можно обновить вручную или удалить целиком на странице «Туннели»;
-     исчезнувшие узлы удаляются, связанные прокси переключаются напрямую, а VPN
-     выбирает первый оставшийся туннель только если удалён именно его одиночный
-     основной маршрут. Цепочки и fallback остаются выбранными и показывают ошибку.
-2. **Создай локальный прокси** → «Создать». Выбери тип (SOCKS5 / HTTP), порт и туннель.
-3. Во вкладке **«Прокси»** выбери отдельный профиль для каждого локального адреса:
-   весь трафик через туннель, Россия напрямую или всё напрямую.
-4. Во вкладке **«VPN»** выбери основной маршрут — туннель, цепочку или
-   fallback-группу — и нажми **«Подключить»**. При необходимости добавь отдельные
-   политики, цепочки и fallback-группы ниже.
-   При первом подключении macOS один раз попросит
-   пароль администратора; после этого VPN включается без пароля даже после перезапуска приложения.
-5. VPN и локальный прокси включаются независимо на главной странице или отдельными
-   кнопками в toolbar. Глобальный хоткей **⌘⇧V** переключает VPN, даже когда окно скрыто.
-6. Страница **«Туннели»** автоматически измеряет задержку реальным HTTP-запросом
-   через каждый outbound. Цветной пинг также виден в выборе туннеля на главной;
-   кнопка со шкалой обновляет один узел, кнопка в toolbar — все сразу.
-7. Впиши прокси в клиент:
-   - **Браузер / система:** SOCKS5 или HTTP → `127.0.0.1` и твой порт.
-   - **Telegram:** Настройки → Данные и память → Прокси → **SOCKS5** → `127.0.0.1`, порт.
-   - Клик по адресу прокси копирует `127.0.0.1:порт`.
-
-Иконка в строке меню показывает статус и позволяет независимо управлять VPN и
-локальным прокси, а также копировать адрес прокси, не открывая окно.
-
-VPN и локальные прокси остаются inbound одного Xray и используют общие outbound.
-Обычная смена основного маршрута или политики применяется через локальный Xray API
-без перезапуска процесса: уже открытые соединения завершаются на прежнем outbound,
-а новые сразу используют выбранный маршрут. Изменения topology, inbound или DNS
-проходят через проверенный candidate-конфиг с автоматическим возвратом к последнему
-рабочему варианту.
-
-## Системный VPN
-
-Системный режим создаёт `utun`, ставит более точные IPv4/IPv6-маршруты и
-передаёт весь TCP/UDP-трафик Mac в TUN-inbound Xray. Трафик, который не совпал
-ни с одной политикой, всегда идёт через выбранный **основной маршрут**: одиночный
-туннель, цепочку или fallback-группу. Отдельных
-режимов `RU напрямую` и `Всё напрямую` у системного VPN нет: такие сценарии
-создаются обычными политиками и поэтому не дублируют основной интерфейс.
-
-Можно создавать упорядоченные политики. Каждая
-политика содержит один или несколько доменов, подсетей, `geosite:*` или
-`geoip:*` и отправляет совпавший трафик напрямую, в блокировку, в один туннель,
-в цепочку или в fallback-группу. Правила проверяются сверху вниз; срабатывает
-первое совпадение. Например:
+## The routing model
 
 ```text
-Корпоративные сети   10.20.0.0/16, *.corp.example  -> WG Office
-Разработка           geosite:github               -> WG SE -> VLESS NL
-Всё остальное                                      -> основной маршрут
+                                      ┌─ Direct
+Mac ──► Waypoint ──► first-match rules ├─ Block
+                    │                 ├─ Tunnel
+                    │                 ├─ WG ──► VLESS       (chain)
+                    │                 └─ WG / VLESS / chain (fallback)
+                    │
+                    ├─ System VPN ───────────────► all Mac traffic
+                    └─ SOCKS5 / HTTP :10808 ────► selected apps
 ```
 
-**Цепочки** последовательно соединяют два и более туннеля внутри одного Xray.
-Порядок отображается от Mac к выходу: `WG SE -> VLESS NL` означает, что VLESS
-устанавливает соединение через WireGuard. Поддерживаются сочетания WG/WG,
-WG/VLESS, VLESS/WG, VLESS/VLESS и другие протоколы, которые уже понимает приложение.
+Rules are evaluated from top to bottom. Traffic that does not match a policy uses
+the main VPN route. Local proxies have their own route profiles and can run at the
+same time as the system VPN.
 
-**Fallback-группы** объединяют отдельные туннели и готовые цепочки. Первый маршрут
-доступен сразу при запуске, а Xray каждые 3 секунды проверяет доступность и задержку,
-исключает варианты выше заданного
-порога и выбирает маршрут с учётом порядка предпочтения и текущего RTT. Порядок
-не является абсолютной фиксацией на первом варианте: более быстрый доступный
-маршрут может быть выбран для сохранения качества. Если все варианты недоступны,
-группа блокирует трафик или выпускает его напрямую — в зависимости от настройки.
+### Built for network changes
 
-Приоритет системного VPN: служебный DNS-обход, пользовательские политики,
-совместимые правила из старого состояния, локальная сеть напрямую, основной
-туннель VPN, затем правила локальных прокси. Политика с удалённой или выключенной
-целью помечается ошибкой и не превращается молча в прямой маршрут.
+Waypoint keeps the `utun` interface and fail-closed routes in place while Wi-Fi,
+Ethernet, or a phone hotspot changes underneath it. Xray is rebound to the new
+physical path only after that path is ready, so traffic does not briefly escape
+through the normal default route.
 
-Локальная сеть (`geoip:private`) остаётся доступной напрямую. Xray sniffing
-определяет домены по HTTP, TLS и QUIC, поэтому доменные правила работают и для
-приложений без настроек прокси.
+WireGuard peers receive persistent keepalive, fallback decisions use hysteresis,
+and ordinary route changes are applied through Xray's local API without restarting
+the data plane.
 
-Для маршрутов macOS нужны повышенные права. При первом подключении launcher после
-одноразового подтверждения устанавливает ограниченный root-LaunchDaemon. Он запускается macOS
-автоматически, принимает команды только от текущего пользователя и поэтому переживает перезапуск
-приложения. После обновления встроенного сервиса macOS может ещё раз запросить подтверждение.
+## Supported connections
 
-Встроенный `TPHVPNHelper` открывает `utun`, настраивает адрес, ставит маршруты и следит за lifecycle.
-Перед чтением подписочного Xray-конфига helper сбрасывает root до uid/gid пользователя
-приложения. При неожиданном падении Xray helper сначала пытается восстановить его,
-не снимая `utun` и системные маршруты; при неудачном candidate reload автоматически
-возвращается последний рабочий конфиг. Маршруты снимаются только при штатной остановке,
-завершении приложения или после исчерпания recovery. Изменения правил при активном VPN
-применяются без повторного запроса пароля.
+### Tunnels and subscriptions
 
-ICMP не поддерживается TUN-реализацией Xray, поэтому системный `ping` не является
-проверкой VPN; TCP и UDP поддерживаются.
+| Input | Support |
+|---|---|
+| WireGuard | Full `wg-quick` profile with one or more peers |
+| VLESS | TCP, WebSocket, gRPC, HTTPUpgrade, XHTTP, TLS, Reality, Vision |
+| VMess | v2rayN base64 JSON |
+| Trojan | URI import with TLS defaults |
+| Shadowsocks | SIP002 and base64 URI forms |
+| Upstream proxy | `socks://` and `http://` |
+| Subscription | Plain or base64 link list, grouped and refreshed every 15 minutes |
 
-## Обход системных VPN и туннелей
+### Local endpoints
 
-macOS маршрутизирует по назначению, а не по процессу: когда поднимается VPN, он ставит
-default route через свой `utun`, и весь новый трафик — включая исходящий трафик xray —
-уходит внутрь этого туннеля. Получается «твой туннель внутри чужого VPN»: лишний хоп,
-просадка скорости, а при падении внешнего VPN — обрыв.
+- SOCKS5 with UDP support
+- HTTP proxy
+- Loopback-only or LAN listening
+- Optional username and password
+- A separate route profile for every endpoint
 
-Хаб привязывает исходящие сокеты xray к физическому интерфейсу (`sockopt.interface`,
-под капотом `IP_BOUND_IF`). Привязка перебивает таблицу маршрутизации, поэтому трафик
-уходит напрямую независимо от того, что прописал VPN.
+## Everyday workflow
 
-Интерфейс определяется по Network Service Order из системных настроек, а не по default
-route — иначе при активном full-tunnel VPN там оказался бы как раз `utun`. Приложение
-получает системные события смены сети и отслеживает имя интерфейса, его адрес и scoped
-gateway. При переходе Wi-Fi → Ethernet/модем `utun` и `/1` kill-switch маршруты не
-снимаются: helper сначала готовит новый физический путь, а затем переносит Xray. При
-смене Wi-Fi на том же `en0` Xray вообще не перезапускается — обновляется только gateway.
+1. Add tunnel links, a WireGuard config, or a subscription URL.
+2. Open **VPN** and choose a tunnel, chain, or fallback group as the main route.
+3. Add first-match policies for domains, networks, GeoSite, or GeoIP lists.
+4. Turn on the system VPN, local proxies, or both from the dashboard or menu bar.
 
-DNS тоже уводится мимо туннеля отдельным правилом маршрутизации: иначе возникает круговая
-зависимость — чтобы поднять туннель, нужно отрезолвить имя его сервера, а резолв идёт
-через ещё не поднятый туннель.
+Tunnel latency appears next to each route as soon as its individual check finishes.
+Subscription nodes stay grouped under their source instead of becoming an unstructured
+list.
 
-В ⚙ можно выключить обход или задать интерфейс вручную.
+<details>
+<summary><strong>How system VPN works</strong></summary>
 
-## Как это устроено
+Waypoint creates a macOS `utun` interface and two more-specific IPv4/IPv6 routes.
+The embedded helper passes TCP and UDP packets to Xray's TUN inbound. Xray itself
+runs as the signed-in user; only interface and route lifecycle operations stay in
+the restricted root service.
 
-- `Sources/TPHCore/` — логика, не зависящая от интерфейса:
-  - `Parsers.swift` — разбор ссылок и конфигов в xray-outbound'ы
-  - `XrayConfig.swift` — сборка конфига xray (inbounds + outbounds + routing + обход)
-  - `Engine.swift` — actor: запуск/остановка xray, тест туннеля, подписки
-  - `SystemVPNRuntime.swift` — запуск helper и служебные файлы системного VPN
-  - `NetworkInterface.swift` — определение физического интерфейса (`getifaddrs`)
-  - `Store.swift` — JSON-хранилище состояния
-  - `JSONValue.swift` — динамическое JSON-дерево для конфига xray
-- `Sources/TunnelProxyHub/` — SwiftUI-интерфейс и модель состояния
-- `Sources/TPHVPNHelper/` — минимальный root-helper для `utun` и маршрутов;
-  сам xray всегда работает от обычного пользователя
-- `Sources/TPHTests/` — проверки
-- `Resources/AppIcon.png` — исходник иконки 1024×1024 с альфой;
-  `scripts/make-icon.sh` собирает из него `.icns` со всеми размерами
+The service validates every file, user, interface, argument, and executable path.
+If a candidate Xray configuration fails, Waypoint restores the last confirmed one.
+If Xray exits unexpectedly, the helper attempts recovery before removing protected
+routes.
 
-Состояние лежит в `~/Library/Application Support/tunnel-proxy-hub/` — тот же `state.json`,
-что использовала предыдущая Electron-версия, поэтому туннели и прокси переносятся сами.
+ICMP is not supported by Xray's TUN implementation, so the system `ping` command is
+not a VPN connectivity test. TCP and UDP traffic are supported.
 
-## Тесты
+</details>
+
+<details>
+<summary><strong>How tunnel chains and fallback work</strong></summary>
+
+A chain lists hops from the Mac to the final exit. For example, `WG SE → VLESS NL`
+means the VLESS connection is established through WireGuard.
+
+A fallback group may contain tunnels and reusable chains. The first candidate is
+available immediately during startup. Background observations then choose a healthy
+route within the configured latency threshold. A new selection must be confirmed,
+and one transient probe failure does not move traffic to another route.
+
+If every candidate fails, the group either blocks traffic or uses Direct according
+to its explicit final action. It never silently changes to Direct.
+
+</details>
+
+<details>
+<summary><strong>How physical network bypass works</strong></summary>
+
+Without an explicit egress interface, a full-tunnel VPN can route Xray's own outbound
+sockets back into the same `utun`. Waypoint avoids that loop by binding outbound
+sockets to the active physical interface with `IP_BOUND_IF` and routing DNS through
+the same protected path.
+
+The interface is selected from macOS Network Service Order instead of the current
+default route, which may already point at a VPN. You can disable this behavior or
+choose an interface manually in Settings.
+
+</details>
+
+## Development
+
+Requires macOS 15+, Swift 6, Command Line Tools, and Xray.
 
 ```bash
-swift run tph-tests         # парсеры, генерация конфига, обход, состояние
-swift run tph-tests --live  # живая проверка: xray, реальный туннель, обход
-swift run tph-tests --live-latency # пакетный URL-тест задержки через туннели
-swift run tph-tests --validate-hot-routing # Xray API switch + HTTPS без смены PID
-swift run tph-vpn-lifecycle-tests # accepted/recovered helper reload
+make build     # debug build
+make run       # launch from source
+make test      # deterministic parser, routing, migration, and runtime checks
+make live      # live Xray and tunnel verification
+make app       # signed build/Waypoint.app bundle
+make install   # install into /Applications
 ```
 
-`--live` читает настоящий `state.json`, поднимает xray и делает запрос через первый
-туннель — показывает IP выхода и проверяет, что привязка к интерфейсу реально работает.
+Useful focused checks:
 
-## Иконка
+```bash
+swift run waypoint-tests --live-latency
+swift run waypoint-tests --validate-hot-routing
+swift run waypoint-tests --validate-routing
+swift run waypoint-vpn-lifecycle-tests
+.build/debug/WaypointVPNLauncher --self-test
+```
 
-Исходник — `Resources/AppIcon.png` (1024×1024, прозрачный фон, squircle).
-Чтобы поменять: положи новый PNG на это место и выполни `make icon`, затем
-`make install`. Скрипт сам сгенерирует все 10 размеров от 16px до 1024px.
+### Project map
 
-## Ограничения / TODO
+```text
+Sources/Waypoint/                  SwiftUI app and state model
+Sources/WaypointCore/              parsers, Xray config, routing, persistence
+Sources/WaypointVPNHelper/         privileged utun and route lifecycle
+Sources/WaypointVPNLauncher/       one-time service installer and IPC client
+Sources/WaypointVPNLifecycle/      transactional Xray reload state machine
+Sources/WaypointTests/             deterministic and live checks
+Resources/                         app icon sources
+```
 
-- Clash-YAML подписки не парсятся (только base64/список ссылок). Hysteria2 / TUIC —
-  протоколы sing-box, xray их не умеет.
-- Нет упаковки в `.dmg` и подписи Developer ID — `build-app.sh` делает ad-hoc подпись.
-- Системный режим работает через TUN и одноразово установленный root-LaunchDaemon, а не через Apple
-  Network Extension, поэтому не появляется отдельной карточкой в System Settings → VPN.
-- Измерение задержки обращается к `cp.cloudflare.com/cdn-cgi/trace`. Чтобы не
-  создавать вторую WireGuard-сессию с тем же ключом, обновление пингов временно
-  недоступно, пока основной VPN или локальный прокси включён.
+Persistent state is stored in `~/Library/Application Support/Waypoint/state.json`.
+On first launch, Waypoint copies the previous app's state automatically and leaves
+the original untouched as a fallback.
 
-## История
+## Current limitations
 
-Предыдущая версия на Electron сохранена в git под тегом `electron-version`.
+- Subscription import accepts plain or base64 link lists, not Clash YAML.
+- Hysteria2 and TUIC are not available because they are not Xray protocols.
+- Local builds use ad-hoc signing; Developer ID packaging and a DMG are not included yet.
+- System VPN uses a restricted LaunchDaemon rather than Network Extension, so it does
+  not appear as a separate profile in System Settings → VPN.
+
+---
+
+<p align="center">
+  Built for people who want routing to stay understandable when the network is not.
+</p>
