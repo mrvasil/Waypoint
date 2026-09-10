@@ -439,13 +439,15 @@ public enum Parsers {
             return JSONValue.pruned([
                 "publicKey": p["publickey"].map { .string($0) },
                 "preSharedKey": p["presharedkey"].map { .string($0) },
-                "endpoint": p["endpoint"].map { .string($0) },
+                "endpoint": p["endpoint"].map {
+                    .string(WireGuardAddress.normalizedEndpoint($0))
+                },
                 "allowedIPs": .array(allowed.map { .string($0) }),
                 "keepAlive": p["persistentkeepalive"].flatMap { Int($0) }.map { .int($0) },
             ])
         }
 
-        let firstEndpoint = peers[0]["endpoint"] ?? ""
+        let firstEndpoint = WireGuardAddress.normalizedEndpoint(peers[0]["endpoint"] ?? "")
         // Endpoint может быть IPv6 в скобках — [::1]:51820.
         let epHost: String
         let epPort: Int

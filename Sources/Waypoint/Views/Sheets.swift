@@ -324,19 +324,20 @@ struct ProxySheet: View {
     @State private var kind: LocalProxy.Kind = .socks
     @State private var listen = "127.0.0.1"
     @State private var portText = ""
-    @State private var tunnelId: String?
+    @State private var target: VPNRouteTarget?
     @State private var routingMode: LocalProxy.RoutingMode = .tunnelAll
     @State private var useAuth = false
     @State private var user = ""
     @State private var pass = ""
 
     private var isEditing: Bool { proxy != nil }
-    private var manualTunnels: [Tunnel] {
-        model.state.tunnels.filter { $0.subscriptionId == nil }
-    }
-
-    private func tunnels(for subscription: Subscription) -> [Tunnel] {
-        model.state.tunnels.filter { $0.subscriptionId == subscription.id }
+    private var routeIssue: String? {
+        guard routingMode != .directAll else { return nil }
+        guard let target else { return "Маршрут прокси не выбран" }
+        guard target.kind == .tunnel || target.kind == .chain || target.kind == .fallback else {
+            return "Прокси поддерживает туннели, цепочки и fallback"
+        }
+        return model.state.vpnRouteTargetIssue(target)
     }
 
     var body: some View {
@@ -345,7 +346,7 @@ struct ProxySheet: View {
             symbol: "arrow.triangle.branch",
             subtitle: "Локальный адрес для приложений",
             confirmTitle: isEditing ? "Сохранить" : "Создать",
-            confirmDisabled: Int(portText) == nil,
+            confirmDisabled: Int(portText) == nil || routeIssue != nil,
             onConfirm: save
         ) {
             VStack(spacing: 16) {
@@ -391,29 +392,13 @@ struct ProxySheet: View {
                     }
 
                     if routingMode != .directAll {
-                        LabeledField("Основной туннель") {
-                            if model.state.tunnels.isEmpty {
-                                Label("Сначала добавьте туннель", systemImage: "exclamationmark.triangle.fill")
-                                    .foregroundStyle(.orange)
-                            } else {
-                                Picker("Туннель", selection: $tunnelId) {
-                                    ForEach(model.state.subscriptions) { subscription in
-                                        Section(subscription.name) {
-                                            ForEach(tunnels(for: subscription)) { tunnel in
-                                                Text(tunnel.name).tag(String?.some(tunnel.id))
-                                            }
-                                        }
-                                    }
-                                    if !manualTunnels.isEmpty {
-                                        Section("Мои туннели") {
-                                            ForEach(manualTunnels) { tunnel in
-                                                Text(tunnel.name).tag(String?.some(tunnel.id))
-                                            }
-                                        }
-                                    }
-                                }
-                                .labelsHidden()
-                            }
+                        LabeledField("Выходной маршрут") {
+                            ProxyRouteTargetPicker(selection: $target)
+                        }
+                        if let routeIssue {
+                            Label(L10n.string(routeIssue), systemImage: "exclamationmark.triangle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
                         }
                     }
 
@@ -440,8 +425,8 @@ struct ProxySheet: View {
         }
         .onAppear(perform: load)
         .onChange(of: routingMode) {
-            if routingMode != .directAll, tunnelId == nil {
-                tunnelId = model.state.tunnels.first?.id
+            if routingMode != .directAll, routeIssue != nil {
+                target = model.state.firstAvailableLocalProxyTarget()
             }
         }
     }
@@ -452,7 +437,7 @@ struct ProxySheet: View {
             kind = proxy.kind
             listen = proxy.listen
             portText = String(proxy.port)
-            tunnelId = proxy.tunnelId
+            target = proxy.target
             routingMode = proxy.routingMode
             if let auth = proxy.auth, !auth.user.isEmpty {
                 useAuth = true
@@ -461,8 +446,8 @@ struct ProxySheet: View {
             }
         } else {
             portText = String(model.suggestedPort())
-            tunnelId = model.state.tunnels.first?.id
-            routingMode = model.state.tunnels.isEmpty ? .directAll : .tunnelAll
+            target = model.state.firstAvailableLocalProxyTarget()
+            routingMode = target == nil ? .directAll : .tunnelAll
         }
     }
 
@@ -475,7 +460,7 @@ struct ProxySheet: View {
             existing.kind = kind
             existing.listen = listen
             existing.port = port
-            existing.tunnelId = tunnelId
+            existing.target = target
             existing.routingMode = routingMode
             existing.auth = auth
             model.updateProxy(existing)
@@ -485,7 +470,7 @@ struct ProxySheet: View {
                 kind: kind,
                 listen: listen,
                 port: port,
-                tunnelId: tunnelId,
+                target: target,
                 routingMode: routingMode,
                 auth: auth
             ))
@@ -495,11 +480,11 @@ struct ProxySheet: View {
     private var routingDescription: String {
         switch routingMode {
         case .tunnelAll:
-            "Любой трафик этого локального прокси отправляется в выбранный туннель."
+            "Любой трафик этого локального прокси отправляется в выбранный маршрут."
         case .directRussia:
-            "geoip:ru и geosite:category-ru идут напрямую, остальной трафик — в туннель."
+            "geoip:ru и geosite:category-ru идут напрямую, остальной трафик — в выбранный маршрут."
         case .directAll:
-            "Любой трафик идёт напрямую; выбранный туннель не используется."
+            "Любой трафик идёт напрямую; выбранный маршрут не используется."
         }
     }
 }

@@ -296,10 +296,17 @@ extension AppState {
                 symbol: "arrow.trianglehead.branch",
                 color: .orange
             )
-        case .direct, .block:
+        case .direct:
+            return VPNMainRoutePresentation(
+                name: "Напрямую",
+                detail: "Через туннели идут только совпавшие политики",
+                symbol: "arrow.up.right",
+                color: .green
+            )
+        case .block:
             return VPNMainRoutePresentation(
                 name: "Маршрут недоступен",
-                detail: "Основной маршрут должен вести в туннель",
+                detail: "Block доступен только внутри политик",
                 symbol: "exclamationmark.triangle.fill",
                 color: .orange
             )
@@ -314,8 +321,8 @@ struct VPNMainRoutePresentation {
     let color: Color
 }
 
-/// Компактный нативный picker для catch-all маршрута системного VPN. Direct и
-/// Block здесь намеренно отсутствуют: для них существуют first-match политики.
+/// Компактный нативный picker для catch-all маршрута системного VPN. Direct
+/// оставляет через туннели только first-match политики; Block здесь недоступен.
 struct VPNMainRoutePicker: View {
     @Environment(AppModel.self) private var model
     @Binding var selection: VPNRouteTarget?
@@ -323,6 +330,101 @@ struct VPNMainRoutePicker: View {
     var body: some View {
         Picker("Основной маршрут", selection: $selection) {
             if let selection, model.state.systemVPNMainRouteIssue() != nil {
+                Section("Текущее значение") {
+                    Label(model.state.vpnRouteTargetName(selection), systemImage: "exclamationmark.triangle.fill")
+                        .tag(Optional(selection))
+                }
+            }
+
+            Section("Без основного туннеля") {
+                Label("Напрямую", systemImage: "arrow.up.right")
+                    .tag(Optional(VPNRouteTarget.direct))
+            }
+
+            tunnelOptions
+            chainOptions
+            fallbackOptions
+
+            if !hasAvailableRoutes {
+                Text("Нет доступных маршрутов")
+                    .tag(Optional<VPNRouteTarget>.none)
+            }
+        }
+        .labelsHidden()
+    }
+
+    private var hasAvailableRoutes: Bool {
+        !model.state.tunnels.isEmpty
+            || model.state.vpnTunnelChains.contains { model.state.vpnTunnelChainIssue($0) == nil }
+            || model.state.vpnFallbackGroups.contains { model.state.vpnFallbackGroupIssue($0) == nil }
+    }
+
+    @ViewBuilder
+    private var tunnelOptions: some View {
+        ForEach(model.state.subscriptions) { subscription in
+            let tunnels = model.state.tunnels.filter { $0.subscriptionId == subscription.id }
+            if !tunnels.isEmpty {
+                Section(subscription.name) {
+                    ForEach(tunnels) { tunnel in
+                        Label(tunnel.name, systemImage: tunnel.routingSymbol)
+                            .tag(Optional(VPNRouteTarget.tunnel(tunnel.id)))
+                    }
+                }
+            }
+        }
+
+        let manual = model.state.tunnels.filter { $0.subscriptionId == nil }
+        if !manual.isEmpty {
+            Section("Мои туннели") {
+                ForEach(manual) { tunnel in
+                    Label(tunnel.name, systemImage: tunnel.routingSymbol)
+                        .tag(Optional(VPNRouteTarget.tunnel(tunnel.id)))
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var chainOptions: some View {
+        let chains = model.state.vpnTunnelChains.filter { model.state.vpnTunnelChainIssue($0) == nil }
+        if !chains.isEmpty {
+            Section("Цепочки") {
+                ForEach(chains) { chain in
+                    Label(chain.name, systemImage: "link")
+                        .tag(Optional(VPNRouteTarget.chain(chain.id)))
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var fallbackOptions: some View {
+        let groups = model.state.vpnFallbackGroups.filter { model.state.vpnFallbackGroupIssue($0) == nil }
+        if !groups.isEmpty {
+            Section("Fallback") {
+                ForEach(groups) { group in
+                    Label(group.name, systemImage: "arrow.trianglehead.branch")
+                        .tag(Optional(VPNRouteTarget.fallback(group.id)))
+                }
+            }
+        }
+    }
+}
+
+/// Выбор выхода локального SOCKS/HTTP-прокси. Использует те же сохранённые
+/// топологии, что и VPN, но не предлагает Direct/Block: прямой выход задаётся
+/// отдельным профилем маршрутизации прокси.
+struct ProxyRouteTargetPicker: View {
+    @Environment(AppModel.self) private var model
+    @Binding var selection: VPNRouteTarget?
+
+    var body: some View {
+        Picker("Выходной маршрут", selection: $selection) {
+            if let selection,
+               (selection.kind != .tunnel
+                    && selection.kind != .chain
+                    && selection.kind != .fallback
+                    || model.state.vpnRouteTargetIssue(selection) != nil) {
                 Section("Текущее значение") {
                     Label(model.state.vpnRouteTargetName(selection), systemImage: "exclamationmark.triangle.fill")
                         .tag(Optional(selection))
@@ -404,6 +506,10 @@ struct VPNMainRouteMenuItems: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
+        Section("Без основного туннеля") {
+            routeButton(.direct, title: "Напрямую", symbol: "arrow.up.right")
+        }
+
         ForEach(model.state.subscriptions) { subscription in
             let tunnels = model.state.tunnels.filter { $0.subscriptionId == subscription.id }
             if !tunnels.isEmpty {

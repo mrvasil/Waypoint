@@ -137,12 +137,16 @@ public extension AppState {
         return vpnFallbackGroups.first { $0.id == id }
     }
 
-    /// Основной маршрут допускает только реальные сетевые пути. Direct и
-    /// Block доступны политикам, но не catch-all системного VPN.
+    /// Основной маршрут допускает Direct или реальный сетевой путь. Block
+    /// остаётся только действием политики: случайный catch-all не должен
+    /// превращать включённый VPN в полный офлайн.
     func systemVPNMainRouteIssue() -> String? {
         guard let target = systemVPN.target else { return "Основной маршрут не выбран" }
-        guard target.kind == .tunnel || target.kind == .chain || target.kind == .fallback else {
-            return "Основным маршрутом может быть туннель, цепочка или fallback"
+        guard target.kind == .direct
+                || target.kind == .tunnel
+                || target.kind == .chain
+                || target.kind == .fallback else {
+            return "Основным маршрутом может быть Direct, туннель, цепочка или fallback"
         }
         return vpnRouteTargetIssue(target)
     }
@@ -150,6 +154,29 @@ public extension AppState {
     func systemVPNMainTunnelID() -> String? {
         guard systemVPN.target?.kind == .tunnel else { return nil }
         return systemVPN.target?.referenceId
+    }
+
+    /// Локальный прокси использует ту же топологию, что и системный VPN, но
+    /// Direct задаётся отдельным профилем, а Block не является выбираемым выходом.
+    func localProxyRouteIssue(_ proxy: LocalProxy) -> String? {
+        guard proxy.routingMode != .directAll else { return nil }
+        guard let target = proxy.target else { return "Маршрут прокси не выбран" }
+        guard target.kind == .tunnel || target.kind == .chain || target.kind == .fallback else {
+            return "Прокси поддерживает туннели, цепочки и fallback"
+        }
+        return vpnRouteTargetIssue(target)
+    }
+
+    /// Первый рабочий путь для нового прокси или явного переключения из Direct.
+    func firstAvailableLocalProxyTarget() -> VPNRouteTarget? {
+        if let tunnel = tunnels.first { return .tunnel(tunnel.id) }
+        if let chain = vpnTunnelChains.first(where: { vpnTunnelChainIssue($0) == nil }) {
+            return .chain(chain.id)
+        }
+        if let group = vpnFallbackGroups.first(where: { vpnFallbackGroupIssue($0) == nil }) {
+            return .fallback(group.id)
+        }
+        return nil
     }
 
     /// Fallback попадает в runtime только если на него ссылается корректная
@@ -164,6 +191,12 @@ public extension AppState {
             guard !PersistentRouteTargets.parse(policy.targets).isEmpty,
                   vpnRouteTargetIssue(policy.target) == nil,
                   let id = policy.target.referenceId else { continue }
+            append(id)
+        }
+        for proxy in proxies
+        where proxy.enabled && proxy.routingMode != .directAll && proxy.target?.kind == .fallback {
+            guard localProxyRouteIssue(proxy) == nil,
+                  let id = proxy.target?.referenceId else { continue }
             append(id)
         }
         if let target = systemVPN.target,

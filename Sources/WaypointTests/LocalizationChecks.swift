@@ -16,6 +16,11 @@ enum LocalizationChecks {
                 "Settings",
                 "английская строка"
             )
+            try expectEqual(
+                L10n.string("Режим VPN", language: .english),
+                "VPN mode",
+                "быстрые настройки VPN"
+            )
         }
 
         h.check("форматируемые статусы переводятся с аргументами") {

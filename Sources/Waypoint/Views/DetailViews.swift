@@ -3,7 +3,6 @@ import WaypointCore
 
 struct DashboardView: View {
     @Environment(AppModel.self) private var model
-    let onAddTunnel: () -> Void
     let onAddProxy: () -> Void
     let onOpenSection: (AppSection) -> Void
 
@@ -111,8 +110,8 @@ struct DashboardView: View {
                 )
             }
 
-            DashboardVPNRoutePicker(
-                onAddTunnel: onAddTunnel,
+            DashboardVPNQuickPanel(
+                onOpenTunnels: { onOpenSection(.tunnels) },
                 onOpenRoutes: { onOpenSection(.routing) }
             )
         }
@@ -135,6 +134,9 @@ struct DashboardView: View {
     private var vpnDetail: String {
         guard model.xrayPath != nil else { return "Xray не найден" }
         if model.isSystemVPNReady {
+            if model.state.systemVPN.target == .direct {
+                return L10n.format("Только политики · %@", model.status.vpnInterface ?? "utun")
+            }
             return L10n.format("Весь трафик · %@", model.status.vpnInterface ?? "utun")
         }
         if model.isSystemVPNActive {
@@ -375,7 +377,7 @@ private struct SubscriptionCard: View {
             }
             Button("Отмена", role: .cancel) {}
         } message: {
-            Text("Все её узлы будут удалены. Связанные прокси переключатся на прямой маршрут.")
+            Text("Все её узлы будут удалены. Прямые привязки прокси перейдут в Direct; зависимые цепочки и fallback станут недоступны.")
         }
     }
 
@@ -402,13 +404,13 @@ struct ProxiesView: View {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return model.state.proxies }
         return model.state.proxies.filter { proxy in
-            let tunnelName = model.state.tunnel(id: proxy.tunnelId)?.name ?? ""
+            let routeName = proxy.target.map(model.state.vpnRouteTargetName) ?? ""
             return [
                 proxy.name,
                 proxy.kind.label,
                 proxy.address,
                 proxy.routingMode.label,
-                tunnelName,
+                routeName,
             ].contains { value in
                 value.localizedCaseInsensitiveContains(query)
             }
@@ -423,7 +425,7 @@ struct ProxiesView: View {
                         symbol: searchText.isEmpty ? "arrow.triangle.branch" : "magnifyingglass",
                         title: searchText.isEmpty ? "Прокси пока нет" : "Ничего не найдено",
                         description: searchText.isEmpty
-                            ? "Создайте SOCKS5 или HTTP-прокси и выберите туннель."
+                            ? "Создайте SOCKS5 или HTTP-прокси и выберите выходной маршрут."
                             : "Попробуйте изменить поисковый запрос.",
                         actionTitle: searchText.isEmpty ? "Создать прокси" : nil,
                         action: searchText.isEmpty ? onAdd : nil
@@ -477,6 +479,249 @@ struct LogsView: View {
         .padding(28)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(.background)
+    }
+}
+
+private struct DashboardVPNQuickPanel: View {
+    @Environment(AppModel.self) private var model
+    let onOpenTunnels: () -> Void
+    let onOpenRoutes: () -> Void
+
+    private var favorites: [Tunnel] { model.state.favoriteTunnels() }
+    private var routeSelectionDisabled: Bool {
+        model.xrayPath == nil || (model.isSystemVPNActive && !model.isSystemVPNReady)
+    }
+    private var whitelistCount: Int {
+        VPNQuickRoutes.whitelistTunnelIDs(in: model.state).count
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Режим VPN")
+                        .font(.headline)
+                    Text("Выберите, куда отправлять основной трафик")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Button(action: onOpenRoutes) {
+                    Image(systemName: "slider.horizontal.3")
+                }
+                .buttonStyle(.borderless)
+                .help("Открыть маршрутизацию VPN")
+                .accessibilityLabel("Открыть маршрутизацию VPN")
+            }
+
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 4),
+                spacing: 10
+            ) {
+                VPNQuickRouteButton(
+                    title: "Выкл",
+                    detail: "VPN выключен",
+                    symbol: "power",
+                    isSelected: !model.isSystemVPNActive,
+                    disabled: false,
+                    action: model.deactivateSystemVPN
+                )
+
+                VPNQuickRouteButton(
+                    title: "Напрямую",
+                    detail: "Через VPN только правила",
+                    symbol: "arrow.up.right",
+                    isSelected: isSelected(.direct),
+                    disabled: routeSelectionDisabled,
+                    action: { model.activateSystemVPNRoute(.direct) }
+                )
+
+                VPNQuickRouteButton(
+                    title: "mrvasil",
+                    detail: fallbackDetail(
+                        target: model.quickMRVasilRouteTarget,
+                        idle: mrvasilIdleDetail
+                    ),
+                    symbol: "arrow.trianglehead.branch",
+                    isSelected: model.quickMRVasilRouteTarget.map(isSelected) ?? false,
+                    disabled: routeSelectionDisabled || model.quickMRVasilRouteTarget == nil,
+                    action: model.activateMRVasilQuickRoute
+                )
+
+                VPNQuickRouteButton(
+                    title: "whitelist",
+                    detail: fallbackDetail(
+                        target: model.quickWhitelistRouteTarget,
+                        idle: whitelistCount > 0
+                            ? L10n.format("Akenai · %lld LTE", whitelistCount)
+                            : "Нет Akenai LTE"
+                    ),
+                    symbol: "checkmark.shield",
+                    isSelected: model.quickWhitelistRouteTarget.map(isSelected) ?? false,
+                    disabled: routeSelectionDisabled || model.quickWhitelistRouteTarget == nil,
+                    action: model.activateWhitelistQuickRoute
+                )
+            }
+
+            Divider()
+
+            HStack(spacing: 10) {
+                Label("Избранные туннели", systemImage: "star.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                Button(L10n.string(favorites.isEmpty ? "Добавить" : "Изменить"), action: onOpenTunnels)
+                    .buttonStyle(.link)
+                    .font(.caption)
+            }
+
+            if favorites.isEmpty {
+                Button(action: onOpenTunnels) {
+                    HStack(spacing: 9) {
+                        Image(systemName: "star")
+                            .foregroundStyle(.secondary)
+                        Text("Отметьте звёздочкой нужные туннели — они появятся здесь")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(.horizontal, 12)
+                    .frame(minHeight: 42)
+                    .contentShape(.rect(cornerRadius: Theme.compactCorner))
+                }
+                .buttonStyle(.plain)
+                .background(Color.primary.opacity(0.025), in: .rect(cornerRadius: Theme.compactCorner))
+            } else {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 10) {
+                        ForEach(favorites) { tunnel in
+                            VPNQuickRouteButton(
+                                title: tunnel.name,
+                                detail: tunnel.type.uppercased(),
+                                symbol: tunnel.routingSymbol,
+                                isSelected: isSelected(.tunnel(tunnel.id)),
+                                disabled: routeSelectionDisabled,
+                                width: 176,
+                                action: { model.activateSystemVPNRoute(.tunnel(tunnel.id)) }
+                            )
+                        }
+                    }
+                }
+                .scrollIndicators(.hidden)
+            }
+        }
+        .padding(16)
+        .background(Theme.surface, in: .rect(cornerRadius: Theme.corner))
+        .overlay {
+            RoundedRectangle(cornerRadius: Theme.corner, style: .continuous)
+                .strokeBorder(Theme.separator.opacity(0.45), lineWidth: 0.5)
+        }
+    }
+
+    private func isSelected(_ target: VPNRouteTarget) -> Bool {
+        model.isSystemVPNActive && model.state.systemVPN.target == target
+    }
+
+    private var mrvasilIdleDetail: String {
+        guard let target = model.quickMRVasilRouteTarget,
+              let group = model.state.vpnFallbackGroup(id: target.referenceId) else {
+            return "Fallback недоступен"
+        }
+        return L10n.format("Fallback · %lld варианта", group.members.count)
+    }
+
+    private func fallbackDetail(target: VPNRouteTarget?, idle: String) -> String {
+        guard let target,
+              target.kind == .fallback,
+              isSelected(target),
+              let group = model.state.vpnFallbackGroup(id: target.referenceId) else {
+            return idle
+        }
+        return model.vpnFallbackRuntimePresentation(for: group, idleText: idle).text
+    }
+}
+
+private struct VPNQuickRouteButton: View {
+    let title: String
+    let detail: String
+    let symbol: String
+    let isSelected: Bool
+    let disabled: Bool
+    var width: CGFloat?
+    let action: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 9) {
+                HStack {
+                    Image(systemName: symbol)
+                        .font(.system(size: 15, weight: .semibold))
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+                        .frame(width: 30, height: 30)
+                        .background(
+                            (isSelected ? Color.accentColor : Color.secondary).opacity(0.10),
+                            in: .rect(cornerRadius: 8)
+                        )
+
+                    Spacer(minLength: 6)
+
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Color.accentColor)
+                            .transition(.scale.combined(with: .opacity))
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(L10n.string(title))
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(L10n.string(detail))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            .padding(11)
+            .frame(minWidth: width, maxWidth: width ?? .infinity, minHeight: 82, alignment: .leading)
+            .contentShape(.rect(cornerRadius: Theme.compactCorner))
+            .background(backgroundColor, in: .rect(cornerRadius: Theme.compactCorner))
+            .overlay {
+                RoundedRectangle(cornerRadius: Theme.compactCorner, style: .continuous)
+                    .strokeBorder(
+                        isSelected ? Color.accentColor.opacity(0.72) : Theme.separator.opacity(0.38),
+                        lineWidth: isSelected ? 1.5 : 0.5
+                    )
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+        .opacity(disabled ? 0.46 : 1)
+        .onHover { isHovering = $0 }
+        .scaleEffect(isHovering && !disabled ? 1.012 : 1)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: isSelected)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: isHovering)
+        .help(L10n.format("Выбрать режим VPN: %@", title))
+        .accessibilityLabel(L10n.format("Режим VPN: %@", title))
+        .accessibilityValue(L10n.string(isSelected ? "Выбран" : "Не выбран"))
+    }
+
+    private var backgroundColor: Color {
+        if isSelected { return Color.accentColor.opacity(isHovering ? 0.12 : 0.085) }
+        return isHovering ? Color.accentColor.opacity(0.05) : Color.primary.opacity(0.025)
     }
 }
 

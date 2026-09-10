@@ -720,8 +720,32 @@ struct RoutingProxyCard: View {
     let proxy: LocalProxy
     let onEdit: () -> Void
 
-    private var tunnel: Tunnel? { model.state.tunnel(id: proxy.tunnelId) }
     private var needsTunnel: Bool { proxy.routingMode != .directAll }
+    private var routeIssue: String? { model.state.localProxyRouteIssue(proxy) }
+    private var routeName: String {
+        guard routeIssue == nil, let target = proxy.target else { return L10n.string("Маршрут недоступен") }
+        return model.state.vpnRouteTargetName(target)
+    }
+    private var routeSymbol: String {
+        guard routeIssue == nil, let target = proxy.target else { return "exclamationmark.triangle.fill" }
+        switch target.kind {
+        case .tunnel: return model.state.tunnel(id: target.referenceId)?.routingSymbol ?? "shield.lefthalf.filled"
+        case .chain: return "link"
+        case .fallback: return "arrow.trianglehead.branch"
+        case .direct: return "arrow.up.right"
+        case .block: return "hand.raised.fill"
+        }
+    }
+    private var routeColor: Color {
+        guard routeIssue == nil, let target = proxy.target else { return .orange }
+        switch target.kind {
+        case .tunnel: return .blue
+        case .chain: return .cyan
+        case .fallback: return .orange
+        case .direct: return .green
+        case .block: return .red
+        }
+    }
 
     var body: some View {
         GroupCard {
@@ -741,7 +765,7 @@ struct RoutingProxyCard: View {
                     .labelsHidden()
 
                     if needsTunnel {
-                        tunnelSelection
+                        routeSelection
                             .transition(.opacity.combined(with: .move(edge: .top)))
                     }
 
@@ -810,25 +834,22 @@ struct RoutingProxyCard: View {
     }
 
     @ViewBuilder
-    private var tunnelSelection: some View {
-        if model.state.tunnels.isEmpty {
-            Label("Сначала добавьте туннель", systemImage: "exclamationmark.triangle.fill")
+    private var routeSelection: some View {
+        if model.state.firstAvailableLocalProxyTarget() == nil && proxy.target == nil {
+            Label("Сначала добавьте туннель, цепочку или fallback", systemImage: "exclamationmark.triangle.fill")
                 .font(.callout)
                 .foregroundStyle(.orange)
         } else {
             HStack(spacing: 12) {
-                Label("Основной туннель", systemImage: "point.3.connected.trianglepath.dotted")
+                Label("Выходной маршрут", systemImage: "point.3.connected.trianglepath.dotted")
                     .font(.callout.weight(.medium))
                 Spacer()
-                Picker("Основной туннель", selection: tunnelBinding) {
-                    tunnelPickerOptions
-                }
-                .labelsHidden()
+                ProxyRouteTargetPicker(selection: targetBinding)
                 .frame(maxWidth: 360)
             }
 
-            if tunnel == nil {
-                Label("Туннель не выбран — трафик временно пойдёт напрямую", systemImage: "exclamationmark.triangle.fill")
+            if let routeIssue {
+                Label(L10n.format("Маршрут заблокирован: %@", L10n.string(routeIssue)), systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
@@ -843,9 +864,9 @@ struct RoutingProxyCard: View {
                     title: "Весь трафик",
                     detail: "Любые сайты и IP",
                     sourceSymbol: "arrow.triangle.branch",
-                    destination: tunnel?.name ?? "Напрямую",
-                    destinationSymbol: tunnel == nil ? "arrow.up.right" : "shield.lefthalf.filled",
-                    destinationColor: tunnel == nil ? .green : .blue
+                    destination: routeName,
+                    destinationSymbol: routeSymbol,
+                    destinationColor: routeColor
                 )
             case .directRussia:
                 RoutingFlowRow(
@@ -861,14 +882,14 @@ struct RoutingProxyCard: View {
                     title: "Остальной трафик",
                     detail: "Правило по умолчанию",
                     sourceSymbol: "globe",
-                    destination: tunnel?.name ?? "Напрямую",
-                    destinationSymbol: tunnel == nil ? "arrow.up.right" : "shield.lefthalf.filled",
-                    destinationColor: tunnel == nil ? .green : .blue
+                    destination: routeName,
+                    destinationSymbol: routeSymbol,
+                    destinationColor: routeColor
                 )
             case .directAll:
                 RoutingFlowRow(
                     title: "Весь трафик",
-                    detail: "Туннели не используются",
+                    detail: "Маршруты не используются",
                     sourceSymbol: "arrow.triangle.branch",
                     destination: "Напрямую",
                     destinationSymbol: "arrow.up.right",
@@ -890,34 +911,11 @@ struct RoutingProxyCard: View {
         )
     }
 
-    private var tunnelBinding: Binding<String> {
+    private var targetBinding: Binding<VPNRouteTarget?> {
         Binding(
-            get: { tunnel?.id ?? model.state.tunnels.first?.id ?? "" },
-            set: { model.setProxyTunnel(proxy.id, tunnelID: $0) }
+            get: { proxy.target },
+            set: { if let target = $0 { model.setProxyRouteTarget(proxy.id, target: target) } }
         )
-    }
-
-    @ViewBuilder
-    private var tunnelPickerOptions: some View {
-        ForEach(model.state.subscriptions) { subscription in
-            let tunnels = model.state.tunnels.filter { $0.subscriptionId == subscription.id }
-            if !tunnels.isEmpty {
-                Section(subscription.name) {
-                    ForEach(tunnels) { tunnel in
-                        Text(tunnel.name).tag(tunnel.id)
-                    }
-                }
-            }
-        }
-
-        let manual = model.state.tunnels.filter { $0.subscriptionId == nil }
-        if !manual.isEmpty {
-            Section("Мои туннели") {
-                ForEach(manual) { tunnel in
-                    Text(tunnel.name).tag(tunnel.id)
-                }
-            }
-        }
     }
 }
 
@@ -964,7 +962,7 @@ private struct RoutingFlowRow: View {
 private extension LocalProxy.RoutingMode {
     var shortLabel: String {
         switch self {
-        case .tunnelAll: L10n.string("В туннель")
+        case .tunnelAll: L10n.string("В маршрут")
         case .directRussia: L10n.string("RU напрямую")
         case .directAll: L10n.string("Напрямую")
         }

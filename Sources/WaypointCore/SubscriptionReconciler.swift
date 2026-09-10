@@ -39,6 +39,7 @@ public enum SubscriptionReconciler {
 
         let retained = state.tunnels.filter { $0.subscriptionId != subscriptionID }
         state.tunnels = retained + refreshed
+        state.pruneFavoriteTunnelIDs()
         if let index = state.subscriptions.firstIndex(where: { $0.id == subscriptionID }) {
             state.subscriptions[index].lastUpdatedAt = updatedAt
         }
@@ -48,6 +49,7 @@ public enum SubscriptionReconciler {
         let removedIDSet = Set(removedIDs)
         for index in state.proxies.indices where state.proxies[index].tunnelId.map(removedIDSet.contains) == true {
             state.proxies[index].tunnelId = nil
+            state.proxies[index].routingMode = .directAll
         }
         if state.systemVPN.target?.kind == .tunnel,
            state.systemVPN.target?.referenceId.map(removedIDSet.contains) == true {
@@ -67,8 +69,10 @@ public enum SubscriptionReconciler {
 
         state.subscriptions.removeAll { $0.id == subscriptionID }
         state.tunnels.removeAll { $0.subscriptionId == subscriptionID }
+        state.pruneFavoriteTunnelIDs()
         for index in state.proxies.indices where state.proxies[index].tunnelId.map(removedIDSet.contains) == true {
             state.proxies[index].tunnelId = nil
+            state.proxies[index].routingMode = .directAll
         }
         if state.systemVPN.target?.kind == .tunnel,
            state.systemVPN.target?.referenceId.map(removedIDSet.contains) == true {

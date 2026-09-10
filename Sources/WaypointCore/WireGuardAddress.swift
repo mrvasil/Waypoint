@@ -4,6 +4,41 @@ import Darwin
 enum WireGuardAddress {
     static let defaultPersistentKeepAlive = 25
 
+    /// Repairs the malformed trailing zone marker produced by some imported
+    /// WireGuard configs (`host:port%`). Xray accepts the config during
+    /// preflight but later panics when that peer handles its first packet.
+    /// A `%` inside a bracketed IPv6 address remains untouched.
+    static func normalizedEndpoint(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        let candidate = trimmed.replacingOccurrences(
+            of: "%+$",
+            with: "",
+            options: .regularExpression
+        )
+        guard candidate != trimmed, isValidEndpoint(candidate) else { return trimmed }
+        return candidate
+    }
+
+    private static func isValidEndpoint(_ value: String) -> Bool {
+        let host: Substring
+        let portText: Substring
+        if value.hasPrefix("["), let close = value.firstIndex(of: "]") {
+            host = value[value.index(after: value.startIndex)..<close]
+            let suffix = value[value.index(after: close)...]
+            guard suffix.first == ":" else { return false }
+            portText = suffix.dropFirst()
+        } else {
+            guard let colon = value.lastIndex(of: ":") else { return false }
+            host = value[..<colon]
+            portText = value[value.index(after: colon)...]
+        }
+        guard !host.isEmpty,
+              !portText.isEmpty,
+              portText.allSatisfy(\.isNumber),
+              let port = Int(portText) else { return false }
+        return (1...65_535).contains(port)
+    }
+
     /// Xray's userspace WireGuard device accepts interface host addresses only.
     /// wg-quick commonly stores the containing subnet, so preserve the IP while
     /// converting its prefix to /32 or /128. Invalid values remain unchanged and
@@ -32,11 +67,19 @@ enum WireGuardAddress {
         }
         if let peers = settings["peers"]?.arrayValue {
             settings["peers"] = .array(peers.map { peer in
-                guard peer.objectValue != nil,
-                      (peer["keepAlive"]?.intValue ?? 0) <= 0 else { return peer }
-                return peer.merging(.object([
-                    "keepAlive": .int(defaultPersistentKeepAlive),
-                ]))
+                guard peer.objectValue != nil else { return peer }
+                var patch: [String: JSONValue] = [:]
+                if let endpoint = peer["endpoint"]?.stringValue {
+                    let normalized = normalizedEndpoint(endpoint)
+                    if normalized != endpoint {
+                        patch["endpoint"] = .string(normalized)
+                    }
+                }
+                if (peer["keepAlive"]?.intValue ?? 0) <= 0 {
+                    patch["keepAlive"] = .int(defaultPersistentKeepAlive)
+                }
+                guard !patch.isEmpty else { return peer }
+                return peer.merging(.object(patch))
             })
         }
         return outbound.merging(.object(["settings": settings]))

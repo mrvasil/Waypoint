@@ -851,11 +851,16 @@ public actor Engine {
         try XrayConfig.encode(config).write(to: files.candidate, options: .atomic)
         try? FileManager.default.removeItem(at: files.result)
         let generation = UUID().uuidString.lowercased()
-        let request = try SystemVPNReloadRequest(
-            generation: generation,
-            bypassInterface: networkRebind ? bypass : nil,
-            routeOnly: networkRebind && config == activeConfig
-        )
+        let request = try networkRebind
+            ? SystemVPNReloadRequest.networkRecovery(
+                generation: generation,
+                bypassInterface: bypass
+            )
+            : SystemVPNReloadRequest(
+                generation: generation,
+                bypassInterface: nil,
+                routeOnly: false
+            )
         try Data(request.encodedText.utf8).write(to: files.reload, options: .atomic)
         let previousXrayPID = vpnXrayPID
         vpnConfigurationState = .switching
@@ -904,7 +909,7 @@ public actor Engine {
             activateSystemVPNConfig(
                 config,
                 fallbackGroups: fallbackGroups,
-                resetWarmup: xrayRestarted
+                resetWarmup: networkRebind || xrayRestarted
             )
             vpnConfigurationState = .stable
             if networkRebind {
@@ -1037,7 +1042,8 @@ public actor Engine {
     private func probeSystemVPNOutbound(
         _ outboundTag: String,
         xrayPath: String,
-        apiPort: Int
+        apiPort: Int,
+        expectedRuntimeToken: UUID? = nil
     ) async -> Bool {
         guard let port = Net.freePort() else { return false }
         let token = UUID().uuidString.lowercased()
@@ -1085,7 +1091,10 @@ public actor Engine {
                 apiPort: apiPort,
                 arguments: ["rmi", inboundTag]
             )
-            if removed?.succeeded != true { vpnHotUpdateDirty = true }
+            if removed?.succeeded != true,
+               expectedRuntimeToken == nil || vpnRuntimeToken == expectedRuntimeToken {
+                vpnHotUpdateDirty = true
+            }
             return false
         }
 
@@ -1097,7 +1106,7 @@ public actor Engine {
                     "--write-out", "%{http_code}",
                     "--connect-timeout", "4", "--max-time", "7",
                     "--proxy", "http://127.0.0.1:\(port)",
-                    "https://www.gstatic.com/generate_204",
+                    XrayConfig.connectivityProbeURL,
                 ],
                 timeout: 9
             )
@@ -1113,7 +1122,8 @@ public actor Engine {
             apiPort: apiPort,
             arguments: ["rmi", inboundTag]
         )
-        if removedRule?.succeeded != true || removedInbound?.succeeded != true {
+        if (removedRule?.succeeded != true || removedInbound?.succeeded != true),
+           expectedRuntimeToken == nil || vpnRuntimeToken == expectedRuntimeToken {
             vpnHotUpdateDirty = true
         }
         return curl?.succeeded == true
@@ -1278,9 +1288,14 @@ public actor Engine {
         vpnRuntimePreparationBusy = true
         defer {
             vpnRuntimePreparationBusy = false
-            if activeMode == .systemVPN, vpnReady, !vpnFallbackOverridesReady {
+            let runtimeChanged = vpnRuntimeToken != runtimeToken
+            if activeMode == .systemVPN,
+               vpnReady,
+               runtimeChanged || !vpnFallbackOverridesReady {
                 Task { [weak self] in
-                    try? await Task.sleep(for: .seconds(2))
+                    if !runtimeChanged {
+                        try? await Task.sleep(for: .seconds(2))
+                    }
                     await self?.prepareVPNRuntimeAfterReady()
                 }
             }
@@ -1347,7 +1362,6 @@ public actor Engine {
 
         var warmed = 0
         for tag in tags {
-            await acquireVPNConfigurationMutation()
             let runtimeStillMatches = activeMode == .systemVPN
                 && vpnAPIPort == apiPort
                 && vpnRuntimeToken == runtimeToken
@@ -1358,14 +1372,17 @@ public actor Engine {
                 let healthy = await probeSystemVPNOutbound(
                     tag,
                     xrayPath: xrayPath,
-                    apiPort: apiPort
+                    apiPort: apiPort,
+                    expectedRuntimeToken: runtimeToken
                 )
-                if healthy {
+                if healthy,
+                   activeMode == .systemVPN,
+                   vpnAPIPort == apiPort,
+                   vpnRuntimeToken == runtimeToken {
                     vpnWarmedOutboundTags.insert(tag)
                     warmed += 1
                 }
             }
-            releaseVPNConfigurationMutation()
             guard activeMode == .systemVPN,
                   vpnAPIPort == apiPort,
                   vpnRuntimeToken == runtimeToken else { return }

@@ -122,7 +122,29 @@ public enum NetworkInterface {
 
     /// Интерфейс для обхода туннелей, либо nil если подходящего нет.
     public static func detectPhysical() -> String? {
-        listPhysical().first
+        let ordered = listPhysical()
+        return choosePhysical(
+            defaultRoute: defaultRouteInterface(),
+            serviceOrder: ordered,
+            usable: Set(ordered)
+        )
+    }
+
+    /// Во время Wi-Fi → USB-модем старый интерфейс ещё может иметь IPv4 и
+    /// оставаться первым в Network Service Order. Если системный default route
+    /// уже указывает на другой физический интерфейс, он точнее отражает текущий
+    /// рабочий путь. Туннельный default route намеренно игнорируется.
+    public static func choosePhysical(
+        defaultRoute: String?,
+        serviceOrder: [String],
+        usable: Set<String>
+    ) -> String? {
+        if let defaultRoute,
+           !isTunnelName(defaultRoute),
+           usable.contains(defaultRoute) {
+            return defaultRoute
+        }
+        return serviceOrder.first(where: usable.contains)
     }
 
     /// Стабильный снимок физического пути. Имя en0 само по себе недостаточно:

@@ -110,9 +110,17 @@
 "Нет включённых адресов" = "No enabled endpoints";
 "Нет адресов" = "No endpoints";
 "Создайте SOCKS5 или HTTP-прокси и выберите туннель." = "Create a SOCKS5 or HTTP proxy and choose its route.";
+"Создайте SOCKS5 или HTTP-прокси и выберите выходной маршрут." = "Create a SOCKS5 or HTTP proxy and choose its outbound route.";
 "Создайте первый локальный адрес для приложений." = "Create the first local endpoint for your apps.";
 "Профиль маршрутизации" = "Routing profile";
 "Профиль" = "Profile";
+"Всё через маршрут" = "All through route";
+"В маршрут" = "Through route";
+"Выходной маршрут" = "Outbound route";
+"Маршрут прокси не выбран" = "No proxy route selected";
+"Прокси поддерживает туннели, цепочки и fallback" = "Proxies support tunnels, chains, and fallback groups";
+"Маршрут заблокирован: %@" = "Route blocked: %@";
+"Сначала добавьте туннель, цепочку или fallback" = "Add a tunnel, chain, or fallback group first";
 "Копировать адрес прокси" = "Copy proxy address";
 "Скопировать адрес прокси" = "Copy proxy address";
 "Скопировать адрес" = "Copy address";
@@ -120,6 +128,8 @@
 "Требовать логин и пароль" = "Require username and password";
 "127.0.0.1 — только этот Mac" = "127.0.0.1 — this Mac only";
 "0.0.0.0 — локальная сеть" = "0.0.0.0 — local network";
+"Любой трафик этого локального прокси отправляется в выбранный маршрут." = "All traffic from this local proxy uses the selected route.";
+"geoip:ru и geosite:category-ru идут напрямую, остальной трафик — в выбранный маршрут." = "geoip:ru and geosite:category-ru use Direct; all other traffic uses the selected route.";
 
 /* Tunnels and subscriptions */
 "Мои туннели" = "My tunnels";
@@ -141,6 +151,7 @@
 "Обновление подписки" = "Refreshing subscription";
 "Удалить подписку" = "Delete Subscription";
 "Все её узлы будут удалены. Связанные прокси переключатся на прямой маршрут." = "All of its nodes will be deleted. Linked proxies will switch to Direct.";
+"Все её узлы будут удалены. Прямые привязки прокси перейдут в Direct; зависимые цепочки и fallback станут недоступны." = "All of its nodes will be deleted. Direct proxy bindings will switch to Direct; dependent chains and fallback groups will become unavailable.";
 "Эта подписка уже добавлена" = "This subscription already exists";
 "Ещё не обновлялась" = "Not refreshed yet";
 "В этой группе нет подходящих узлов" = "No matching nodes in this group";
@@ -198,6 +209,7 @@
 "Не используется текущим VPN" = "Not used by the current VPN";
 "Нажмите, чтобы назначить этот туннель системному VPN" = "Click to use this tunnel for the system VPN";
 "Туннели не используются" = "No tunnels used";
+"Маршруты не используются" = "No routes used";
 
 /* Policies */
 "Политики трафика" = "Traffic policies";
@@ -336,6 +348,7 @@
 "Например «WG → VLESS Германия»" = "For example, “WG → VLESS Germany”";
 "Например «Основной + резерв»" = "For example, “Primary + backup”";
 "Любой трафик идёт напрямую; выбранный туннель не используется." = "All traffic uses Direct; the selected tunnel is not used.";
+"Любой трафик идёт напрямую; выбранный маршрут не используется." = "All traffic uses Direct; the selected route is not used.";
 "Любой трафик этого локального прокси отправляется в выбранный туннель." = "All traffic from this local proxy uses the selected tunnel.";
 "Как идёт трафик" = "Traffic flow";
 "Данные подключения" = "Connection details";
@@ -517,3 +530,29 @@
 "⚠ Fallback «%@»: подтверждён отказ всех каналов, применено %@" = "⚠ Fallback “%@”: all routes confirmed down; applied %@";
 "⇄ Fallback «%@»: подтверждён канал %@" = "⇄ Fallback “%@”: confirmed route %@";
 "✓ Системный VPN активен: весь IPv4/IPv6 TCP/UDP-трафик направлен в %@" = "✓ System VPN active: all IPv4/IPv6 TCP/UDP traffic is routed through %@";
+"Режим VPN" = "VPN mode";
+"Выберите, куда отправлять основной трафик" = "Choose where to route your main traffic";
+"Выкл" = "Off";
+"VPN выключен" = "VPN is off";
+"Через VPN только правила" = "Only policy matches use the VPN";
+"Fallback mrvasil vpn" = "mrvasil vpn fallback";
+"Akenai · %lld LTE" = "Akenai · %lld LTE";
+"Нет Akenai LTE" = "No Akenai LTE routes";
+"Открыть маршрутизацию VPN" = "Open VPN routing";
+"Избранные туннели" = "Favorite tunnels";
+"Отметьте звёздочкой нужные туннели — они появятся здесь" = "Star tunnels to keep them within easy reach here";
+"Выбрать режим VPN: %@" = "Select VPN mode: %@";
+"Режим VPN: %@" = "VPN mode: %@";
+"Добавить в избранное" = "Add to favorites";
+"Убрать из избранного" = "Remove from favorites";
+"Добавить туннель в избранное" = "Add tunnel to favorites";
+"Убрать туннель из избранного" = "Remove tunnel from favorites";
+"Маршрут сейчас недоступен" = "This route is currently unavailable";
+"Fallback «mrvasil vpn» недоступен" = "The “mrvasil vpn” fallback is unavailable";
+"В подписке Akenai нет туннелей [Обход LTE]" = "The Akenai subscription has no [LTE bypass] tunnels";
+"Без основного туннеля" = "Without a main tunnel";
+"Через туннели идут только совпавшие политики" = "Only matching policies use tunnels";
+"Block доступен только внутри политик" = "Block is available only inside policies";
+"Основным маршрутом может быть Direct, туннель, цепочка или fallback" = "The main route can be Direct, a tunnel, chain, or fallback group";
+"[обход lte]" = "[обход lte]";
+"Только политики · %@" = "Policies only · %@";

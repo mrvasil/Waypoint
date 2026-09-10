@@ -89,7 +89,7 @@ public struct LocalProxy: Identifiable, Codable, Equatable, Sendable {
 
     /// Готовые профили маршрутизации локального прокси.
     public enum RoutingMode: String, Codable, CaseIterable, Sendable {
-        /// Любой трафик идёт через выбранный туннель.
+        /// Любой трафик идёт через выбранный выходной маршрут.
         case tunnelAll
         /// Российские IP и домены идут напрямую, остальное — через туннель.
         case directRussia
@@ -98,7 +98,7 @@ public struct LocalProxy: Identifiable, Codable, Equatable, Sendable {
 
         public var label: String {
             switch self {
-            case .tunnelAll: return L10n.string("Всё через туннель")
+            case .tunnelAll: return L10n.string("Всё через маршрут")
             case .directRussia: return L10n.string("Россия напрямую")
             case .directAll: return L10n.string("Всё напрямую")
             }
@@ -110,9 +110,10 @@ public struct LocalProxy: Identifiable, Codable, Equatable, Sendable {
     public var kind: Kind
     public var listen: String
     public var port: Int
-    /// Основной туннель для профилей с туннелем. `nil` означает прямой fallback.
-    /// В режиме `directAll` значение сохраняется, но генератор его игнорирует.
-    public var tunnelId: String?
+    /// Основной выход для профилей с маршрутом. Может быть обычным туннелем,
+    /// цепочкой или fallback-группой. В режиме `directAll` значение сохраняется,
+    /// но генератор его игнорирует.
+    public var target: VPNRouteTarget?
     public var routingMode: RoutingMode
     public var auth: ProxyAuth?
     public var enabled: Bool
@@ -123,6 +124,7 @@ public struct LocalProxy: Identifiable, Codable, Equatable, Sendable {
         kind: Kind,
         listen: String = "127.0.0.1",
         port: Int,
+        target: VPNRouteTarget? = nil,
         tunnelId: String? = nil,
         routingMode: RoutingMode = .tunnelAll,
         auth: ProxyAuth? = nil,
@@ -133,7 +135,7 @@ public struct LocalProxy: Identifiable, Codable, Equatable, Sendable {
         self.kind = kind
         self.listen = listen
         self.port = port
-        self.tunnelId = tunnelId
+        self.target = target ?? tunnelId.map(VPNRouteTarget.tunnel)
         self.routingMode = routingMode
         self.auth = auth
         self.enabled = enabled
@@ -141,6 +143,22 @@ public struct LocalProxy: Identifiable, Codable, Equatable, Sendable {
 
     public var address: String { "\(listen):\(port)" }
     public var url: String { "\(kind.scheme)://\(listen):\(port)" }
+
+    /// Source-совместимость со старой моделью. Для цепочки и fallback это
+    /// намеренно `nil`: вызывающий код не должен принимать их за один туннель.
+    public var tunnelId: String? {
+        get {
+            guard target?.kind == .tunnel else { return nil }
+            return target?.referenceId
+        }
+        set {
+            target = newValue.map(VPNRouteTarget.tunnel)
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, kind, listen, port, target, tunnelId, routingMode, auth, enabled
+    }
 
     /// Совместимость с состоянием старых версий, где профиль маршрутизации не
     /// сохранялся: с `tunnelId` весь трафик шёл в туннель, без него — напрямую.
@@ -152,11 +170,29 @@ public struct LocalProxy: Identifiable, Codable, Equatable, Sendable {
         kind = try c.decodeIfPresent(Kind.self, forKey: .kind) ?? .socks
         listen = try c.decodeIfPresent(String.self, forKey: .listen) ?? "127.0.0.1"
         port = try c.decodeIfPresent(Int.self, forKey: .port) ?? 10808
-        tunnelId = try c.decodeIfPresent(String.self, forKey: .tunnelId)
+        if let decodedTarget = try c.decodeIfPresent(VPNRouteTarget.self, forKey: .target) {
+            target = decodedTarget
+        } else {
+            target = try c.decodeIfPresent(String.self, forKey: .tunnelId)
+                .map(VPNRouteTarget.tunnel)
+        }
         routingMode = try c.decodeIfPresent(RoutingMode.self, forKey: .routingMode)
-            ?? (tunnelId == nil ? .directAll : .tunnelAll)
+            ?? (target == nil ? .directAll : .tunnelAll)
         auth = try c.decodeIfPresent(ProxyAuth.self, forKey: .auth)
         enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(name, forKey: .name)
+        try c.encode(kind, forKey: .kind)
+        try c.encode(listen, forKey: .listen)
+        try c.encode(port, forKey: .port)
+        try c.encodeIfPresent(target, forKey: .target)
+        try c.encode(routingMode, forKey: .routingMode)
+        try c.encodeIfPresent(auth, forKey: .auth)
+        try c.encode(enabled, forKey: .enabled)
     }
 }
 
@@ -409,6 +445,8 @@ public struct AppState: Codable, Equatable, Sendable {
     public var systemVPN: SystemVPNConfiguration
     public var subscriptions: [Subscription]
     public var tunnels: [Tunnel]
+    /// Пользовательский порядок быстрых туннелей на Dashboard.
+    public var favoriteTunnelIDs: [String]
     public var proxies: [LocalProxy]
     public var persistentRoutes: [PersistentRoute]
     public var vpnRoutingPolicies: [VPNRoutingPolicy]
@@ -420,6 +458,7 @@ public struct AppState: Codable, Equatable, Sendable {
         systemVPN: SystemVPNConfiguration = SystemVPNConfiguration(),
         subscriptions: [Subscription] = [],
         tunnels: [Tunnel] = [],
+        favoriteTunnelIDs: [String] = [],
         proxies: [LocalProxy] = [],
         persistentRoutes: [PersistentRoute] = [],
         vpnRoutingPolicies: [VPNRoutingPolicy] = [],
@@ -430,6 +469,7 @@ public struct AppState: Codable, Equatable, Sendable {
         self.systemVPN = systemVPN
         self.subscriptions = subscriptions
         self.tunnels = tunnels
+        self.favoriteTunnelIDs = favoriteTunnelIDs
         self.proxies = proxies
         self.persistentRoutes = persistentRoutes
         self.vpnRoutingPolicies = vpnRoutingPolicies
@@ -444,6 +484,7 @@ public struct AppState: Codable, Equatable, Sendable {
             ?? SystemVPNConfiguration()
         subscriptions = try c.decodeIfPresent([Subscription].self, forKey: .subscriptions) ?? []
         tunnels = try c.decodeIfPresent([Tunnel].self, forKey: .tunnels) ?? []
+        favoriteTunnelIDs = try c.decodeIfPresent([String].self, forKey: .favoriteTunnelIDs) ?? []
         proxies = try c.decodeIfPresent([LocalProxy].self, forKey: .proxies) ?? []
         persistentRoutes = try c.decodeIfPresent([PersistentRoute].self, forKey: .persistentRoutes) ?? []
         vpnRoutingPolicies = try c.decodeIfPresent([VPNRoutingPolicy].self, forKey: .vpnRoutingPolicies) ?? []
@@ -454,6 +495,31 @@ public struct AppState: Codable, Equatable, Sendable {
     public func tunnel(id: String?) -> Tunnel? {
         guard let id else { return nil }
         return tunnels.first { $0.id == id }
+    }
+
+    public func isTunnelFavorite(_ id: String) -> Bool {
+        favoriteTunnelIDs.contains(id)
+    }
+
+    public func favoriteTunnels() -> [Tunnel] {
+        favoriteTunnelIDs.compactMap { tunnel(id: $0) }
+    }
+
+    public mutating func setTunnelFavorite(_ id: String, isFavorite: Bool) {
+        guard tunnel(id: id) != nil else { return }
+        if isFavorite {
+            if !favoriteTunnelIDs.contains(id) { favoriteTunnelIDs.append(id) }
+        } else {
+            favoriteTunnelIDs.removeAll { $0 == id }
+        }
+    }
+
+    public mutating func pruneFavoriteTunnelIDs() {
+        let available = Set(tunnels.map(\.id))
+        var seen = Set<String>()
+        favoriteTunnelIDs = favoriteTunnelIDs.filter {
+            available.contains($0) && seen.insert($0).inserted
+        }
     }
 
     /// Глобальный переключатель локальных прокси относится только к текущему

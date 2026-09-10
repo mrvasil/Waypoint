@@ -69,6 +69,29 @@ struct TunnelRow: View {
             .help(L10n.string(latencyHelp))
             .accessibilityLabel(L10n.format("Задержка через %@: %@", tunnel.name, latencyText))
 
+            Button {
+                model.toggleTunnelFavorite(tunnel.id)
+            } label: {
+                Image(systemName: model.state.isTunnelFavorite(tunnel.id) ? "star.fill" : "star")
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(
+                        model.state.isTunnelFavorite(tunnel.id) ? Color.accentColor : .secondary
+                    )
+                    .frame(width: 28, height: 28)
+                    .contentTransition(.symbolEffect(.replace))
+            }
+            .buttonStyle(.borderless)
+            .help(L10n.string(
+                model.state.isTunnelFavorite(tunnel.id)
+                    ? "Убрать из избранного"
+                    : "Добавить в избранное"
+            ))
+            .accessibilityLabel(L10n.string(
+                model.state.isTunnelFavorite(tunnel.id)
+                    ? "Убрать туннель из избранного"
+                    : "Добавить туннель в избранное"
+            ))
+
             Menu {
                 Button("Скопировать адрес", systemImage: "doc.on.doc") {
                     model.copyToClipboard("\(tunnel.host):\(tunnel.port)")
@@ -92,6 +115,13 @@ struct TunnelRow: View {
         .contextMenu {
             Button("Измерить задержку через туннель") {
                 model.testTunnel(tunnel)
+            }
+            Button(L10n.string(
+                model.state.isTunnelFavorite(tunnel.id)
+                    ? "Убрать из избранного"
+                    : "Добавить в избранное"
+            )) {
+                model.toggleTunnelFavorite(tunnel.id)
             }
             Divider()
             Button("Скопировать адрес") {

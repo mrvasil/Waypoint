@@ -55,7 +55,16 @@ final class AppModel {
     private let engine: Engine
     private var networkWatchTask: Task<Void, Never>?
     private var networkEventTask: Task<Void, Never>?
-    private var networkPathMonitor: NWPathMonitor?
+    private var networkEventGeneration = 0
+    private var networkRebindInFlight: String?
+    private var networkPathMonitors: [NWPathMonitor] = []
+    private var physicalNetworkSignalTracker = PhysicalNetworkSignalTracker()
+    private var networkWatchInitialized = false
+    private var suppressStablePhysicalPathEventsUntil = Date.distantPast
+    private var lastNetworkPathAvailable: Bool?
+    private var lastPhysicalPathAvailable: Bool?
+    private var networkPathInterruptionGeneration = 0
+    private var recoveredNetworkPathInterruptionGeneration = 0
     private let networkMonitorQueue = DispatchQueue(
         label: "ru.mrvasil.waypoint.network-path",
         qos: .utility
@@ -68,11 +77,16 @@ final class AppModel {
 
     init() {
         let store = Store()
-        var initialState = store.snapshot()
+        let persistedState = store.snapshot()
+        var initialState = persistedState
         if initialState.systemVPN.target == nil,
            let firstTunnelID = initialState.tunnels.first?.id {
-            store.mutate { $0.systemVPN.target = .tunnel(firstTunnelID) }
-            initialState = store.snapshot()
+            initialState.systemVPN.target = .tunnel(firstTunnelID)
+        }
+        initialState.pruneFavoriteTunnelIDs()
+        _ = VPNQuickRoutes.synchronizeWhitelist(in: &initialState)
+        if initialState != persistedState {
+            store.replace(with: initialState)
         }
         self.store = store
         self.state = initialState
@@ -129,13 +143,19 @@ final class AppModel {
     /// NWPath будит fail-closed rebind, а редкий poll страхует пропущенные events.
     private func startNetworkWatch() {
         let monitor = NWPathMonitor()
-        monitor.pathUpdateHandler = { [weak self] _ in
+        monitor.pathUpdateHandler = { [weak self] path in
             Task { @MainActor [weak self] in
-                self?.scheduleNetworkEventCheck()
+                self?.networkPathDidUpdate(isAvailable: path.status == .satisfied)
             }
         }
         monitor.start(queue: networkMonitorQueue)
-        networkPathMonitor = monitor
+        networkPathMonitors.append(monitor)
+
+        // Full-tunnel utun может оставлять общий NWPath в состоянии satisfied,
+        // даже когда Wi-Fi уже отключён. Эти monitors следят именно за
+        // физическими путями и видят смену Wi-Fi даже с прежними IP/gateway.
+        startPhysicalNetworkMonitor(source: "wifi", type: .wifi)
+        startPhysicalNetworkMonitor(source: "wired", type: .wiredEthernet)
 
         networkWatchTask = Task { [weak self] in
             guard let self else { return }
@@ -146,41 +166,158 @@ final class AppModel {
                 )
             }.value
             self.lastKnownNetworkPath = initialPath
+            self.lastPhysicalPathAvailable = initialPath != nil
+            self.networkWatchInitialized = true
 
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 4_000_000_000)
-                _ = await self.checkNetworkChange()
+                await self.checkNetworkChange()
             }
         }
+    }
+
+    private func startPhysicalNetworkMonitor(
+        source: String,
+        type: NWInterface.InterfaceType
+    ) {
+        let monitor = NWPathMonitor(requiredInterfaceType: type)
+        monitor.pathUpdateHandler = { [weak self] path in
+            let isAvailable = path.status == .satisfied
+            Task { @MainActor [weak self] in
+                self?.physicalNetworkPathDidUpdate(
+                    source: source,
+                    isAvailable: isAvailable
+                )
+            }
+        }
+        monitor.start(queue: networkMonitorQueue)
+        networkPathMonitors.append(monitor)
+    }
+
+    private func networkPathDidUpdate(isAvailable: Bool) {
+        guard networkWatchInitialized else {
+            lastNetworkPathAvailable = isAvailable
+            return
+        }
+        if !isAvailable, lastNetworkPathAvailable != false {
+            networkPathInterruptionGeneration &+= 1
+        }
+        lastNetworkPathAvailable = isAvailable
+        // На unavailable старый DHCP route ещё может быть в таблице. Ждём
+        // available callback и переносим VPN сразу на уже готовый path.
+        if isAvailable { scheduleNetworkEventCheck() }
+    }
+
+    private func physicalNetworkPathDidUpdate(source: String, isAvailable: Bool) {
+        let invalidatesTransport = physicalNetworkSignalTracker.observe(
+            source: source,
+            isAvailable: isAvailable,
+            suppressStableAvailableChange: Date() < suppressStablePhysicalPathEventsUntil
+        )
+        guard networkWatchInitialized else { return }
+        if invalidatesTransport {
+            networkPathInterruptionGeneration &+= 1
+        }
+        if isAvailable { scheduleNetworkEventCheck() }
     }
 
     private func scheduleNetworkEventCheck() {
-        networkEventTask?.cancel()
+        networkEventGeneration &+= 1
+        guard networkEventTask == nil else { return }
         networkEventTask = Task { [weak self] in
-            // NWPath сообщает о смене раньше, чем route table успевает получить
-            // новый gateway. Несколько коротких попыток дают быстрый recovery
-            // без ложного рестарта на промежуточном состоянии сети.
-            try? await Task.sleep(for: .milliseconds(250))
-            for _ in 0..<8 where !Task.isCancelled {
-                guard let self else { return }
-                if await self.checkNetworkChange() { return }
-                try? await Task.sleep(for: .milliseconds(350))
+            guard let self else { return }
+            while !Task.isCancelled {
+                let generation = self.networkEventGeneration
+                await self.runNetworkRecoveryWindow()
+                guard self.networkEventGeneration != generation else { break }
+            }
+            self.networkEventTask = nil
+        }
+    }
+
+    /// `NWPath` часто приходит до DHCP/route update. Неизменившийся первый
+    /// snapshot больше не завершает recovery: несколько раз проверяем путь в
+    /// течение переходного окна, не сбрасывая таймер новыми событиями.
+    private func runNetworkRecoveryWindow() async {
+        var window = NetworkPathRecoveryWindow(confirmedFingerprint: lastKnownNetworkPath)
+        // Интервалы, а не абсолютные offsets: в первые полсекунды после Wi-Fi
+        // проверяем часто, затем реже ждём завершения DHCP.
+        let delaysMilliseconds = [0, 50, 100, 150, 200, 300, 450, 650, 900, 1_200]
+
+        for delay in delaysMilliseconds where !Task.isCancelled {
+            if delay > 0 {
+                do {
+                    try await Task.sleep(for: .milliseconds(delay))
+                } catch {
+                    return
+                }
+            }
+            let current = await currentNetworkFingerprint()
+            recordPhysicalPathAvailability(current != nil)
+            let interruptionGeneration = networkPathInterruptionGeneration
+            let forceRebind = interruptionGeneration != recoveredNetworkPathInterruptionGeneration
+            let stillShowsStalePath = physicalNetworkSignalTracker.isAwaitingPathRecovery
+                && current == lastKnownNetworkPath
+            if stillShowsStalePath { continue }
+            if forceRebind {
+                window.markPathUnavailable()
+            }
+            switch window.observe(current) {
+            case .keepWatching:
+                break
+            case .rebind(let fingerprint):
+                if await handleNetworkChange(to: fingerprint, forceRebind: forceRebind) {
+                    window.confirm(fingerprint)
+                    recoveredNetworkPathInterruptionGeneration = interruptionGeneration
+                    return
+                }
             }
         }
     }
 
-    @discardableResult
-    private func checkNetworkChange() async -> Bool {
+    private func currentNetworkFingerprint() async -> String? {
         // networksetup/route are synchronous processes. Running them on the
         // MainActor every four seconds made the whole SwiftUI window hitch.
         let preferred = state.settings.bypassInterface
-        let current = await Task.detached(priority: .utility) {
+        return await Task.detached(priority: .utility) {
             NetworkInterface.physicalPathFingerprint(
                 interface: preferred.isEmpty ? nil : preferred
             )
         }.value
-        guard let current else { return false }
-        guard current != lastKnownNetworkPath else { return true }
+    }
+
+    private func checkNetworkChange() async {
+        let fingerprint = await currentNetworkFingerprint()
+        recordPhysicalPathAvailability(fingerprint != nil)
+        guard let current = fingerprint else { return }
+        let interruptionGeneration = networkPathInterruptionGeneration
+        let forceRebind = interruptionGeneration != recoveredNetworkPathInterruptionGeneration
+        if forceRebind,
+           physicalNetworkSignalTracker.isAwaitingPathRecovery,
+           current == lastKnownNetworkPath {
+            return
+        }
+        if await handleNetworkChange(to: current, forceRebind: forceRebind) {
+            recoveredNetworkPathInterruptionGeneration = interruptionGeneration
+        }
+    }
+
+    private func recordPhysicalPathAvailability(_ isAvailable: Bool) {
+        if !isAvailable, lastPhysicalPathAvailable != false {
+            networkPathInterruptionGeneration &+= 1
+        }
+        lastPhysicalPathAvailable = isAvailable
+    }
+
+    @discardableResult
+    private func handleNetworkChange(to current: String, forceRebind: Bool = false) async -> Bool {
+        guard forceRebind || current != lastKnownNetworkPath else { return true }
+        guard networkRebindInFlight != current else { return false }
+        networkRebindInFlight = current
+        defer {
+            if networkRebindInFlight == current { networkRebindInFlight = nil }
+        }
+
         cancelTunnelLatencyTests()
         testResults.removeAll()
 
@@ -199,6 +336,7 @@ final class AppModel {
             return true
         }
         do {
+            suppressStablePhysicalPathEvents(for: 3)
             try await engine.reconnectForNetworkChange(
                 state: runtimeState,
                 settings: state.settings
@@ -305,9 +443,13 @@ final class AppModel {
         if testingTunnelIds.contains(id) { cancelTunnelLatencyTests() }
         apply { st in
             st.tunnels.removeAll { $0.id == id }
-            // Прокси, привязанные к удалённому туннелю, идут напрямую.
+            st.pruneFavoriteTunnelIDs()
+            // Явно удалённый одиночный выход становится профилем Direct.
+            // Цепочки/fallback сохраняем как невалидные: так UI показывает
+            // поломку, а генератор блокирует трафик вместо утечки наружу.
             for i in st.proxies.indices where st.proxies[i].tunnelId == id {
                 st.proxies[i].tunnelId = nil
+                st.proxies[i].routingMode = .directAll
             }
             if st.systemVPNMainTunnelID() == id {
                 st.systemVPN.target = st.tunnels.first.map { .tunnel($0.id) }
@@ -321,6 +463,12 @@ final class AppModel {
             if let i = st.tunnels.firstIndex(where: { $0.id == id }) {
                 st.tunnels[i].name = name
             }
+        }
+    }
+
+    func toggleTunnelFavorite(_ id: String) {
+        apply(restart: false) { state in
+            state.setTunnelFavorite(id, isFavorite: !state.isTunnelFavorite(id))
         }
     }
 
@@ -432,18 +580,23 @@ final class AppModel {
         apply { state in
             guard let index = state.proxies.firstIndex(where: { $0.id == id }) else { return }
             state.proxies[index].routingMode = mode
-            if mode != .directAll, state.tunnel(id: state.proxies[index].tunnelId) == nil {
-                state.proxies[index].tunnelId = state.tunnels.first?.id
+            if mode != .directAll, state.localProxyRouteIssue(state.proxies[index]) != nil {
+                state.proxies[index].target = state.firstAvailableLocalProxyTarget()
             }
         }
     }
 
-    func setProxyTunnel(_ id: String, tunnelID: String) {
+    func setProxyRouteTarget(_ id: String, target: VPNRouteTarget) {
         apply { state in
-            guard state.tunnels.contains(where: { $0.id == tunnelID }),
+            guard target.kind == .tunnel || target.kind == .chain || target.kind == .fallback,
+                  state.vpnRouteTargetIssue(target) == nil,
                   let index = state.proxies.firstIndex(where: { $0.id == id }) else { return }
-            state.proxies[index].tunnelId = tunnelID
+            state.proxies[index].target = target
         }
+    }
+
+    func setProxyTunnel(_ id: String, tunnelID: String) {
+        setProxyRouteTarget(id, target: .tunnel(tunnelID))
     }
 
     func removeProxy(_ id: String) {
@@ -527,6 +680,10 @@ final class AppModel {
             for index in state.vpnFallbackGroups.indices {
                 state.vpnFallbackGroups[index].members.removeAll { $0.target == .chain(id) }
             }
+            for index in state.proxies.indices where state.proxies[index].target == .chain(id) {
+                state.proxies[index].target = nil
+                state.proxies[index].routingMode = .directAll
+            }
         }
         presentToast(
             L10n.format("«%@» удалена; зависимые политики выключены", name),
@@ -562,6 +719,10 @@ final class AppModel {
             for index in state.vpnRoutingPolicies.indices
             where state.vpnRoutingPolicies[index].target == .fallback(id) {
                 state.vpnRoutingPolicies[index].enabled = false
+            }
+            for index in state.proxies.indices where state.proxies[index].target == .fallback(id) {
+                state.proxies[index].target = nil
+                state.proxies[index].routingMode = .directAll
             }
         }
         presentToast(
@@ -601,7 +762,10 @@ final class AppModel {
 
     func setSystemVPNMainRoute(_ target: VPNRouteTarget) {
         apply { state in
-            guard target.kind == .tunnel || target.kind == .chain || target.kind == .fallback,
+            guard target.kind == .direct
+                    || target.kind == .tunnel
+                    || target.kind == .chain
+                    || target.kind == .fallback,
                   state.vpnRouteTargetIssue(target) == nil else { return }
             state.systemVPN.target = target
         }
@@ -609,6 +773,53 @@ final class AppModel {
 
     func setSystemVPNTunnel(_ tunnelID: String) {
         setSystemVPNMainRoute(.tunnel(tunnelID))
+    }
+
+    var quickMRVasilRouteTarget: VPNRouteTarget? {
+        VPNQuickRoutes.mrvasilTarget(in: state)
+    }
+
+    var quickWhitelistRouteTarget: VPNRouteTarget? {
+        let ids = VPNQuickRoutes.whitelistTunnelIDs(in: state)
+        if ids.count >= 2,
+           let group = state.vpnFallbackGroup(id: VPNQuickRoutes.whitelistFallbackID),
+           state.vpnFallbackGroupIssue(group) == nil {
+            return .fallback(group.id)
+        }
+        return ids.first.map(VPNRouteTarget.tunnel)
+    }
+
+    /// Быстрая карточка одновременно назначает маршрут и включает VPN. При уже
+    /// поднятом VPN обычная смена назначения проходит через hot routing.
+    func activateSystemVPNRoute(_ target: VPNRouteTarget) {
+        guard target.kind != .block, state.vpnRouteTargetIssue(target) == nil else {
+            presentToast("Маршрут сейчас недоступен", tone: .warning)
+            return
+        }
+        let alreadyActive = isSystemVPNActive
+        if alreadyActive, state.systemVPN.target == target { return }
+        apply(restart: alreadyActive) { $0.systemVPN.target = target }
+        if !alreadyActive { startSystemVPN() }
+    }
+
+    func activateMRVasilQuickRoute() {
+        guard let target = quickMRVasilRouteTarget else {
+            presentToast("Fallback «mrvasil vpn» недоступен", tone: .warning)
+            return
+        }
+        activateSystemVPNRoute(target)
+    }
+
+    func activateWhitelistQuickRoute() {
+        var synchronized = state
+        guard let target = VPNQuickRoutes.synchronizeWhitelist(in: &synchronized) else {
+            presentToast("В подписке Akenai нет туннелей [Обход LTE]", tone: .warning)
+            return
+        }
+        synchronized.systemVPN.target = target
+        let alreadyActive = isSystemVPNActive
+        apply(restart: alreadyActive) { $0 = synchronized }
+        if !alreadyActive { startSystemVPN() }
     }
 
     var isSystemVPNActive: Bool {
@@ -621,6 +832,7 @@ final class AppModel {
 
     func startSystemVPN() {
         cancelTunnelLatencyTests()
+        suppressStablePhysicalPathEvents(for: 5)
         Task {
             do {
                 try await engine.startSystemVPN(state: runtimeState, settings: state.settings)
@@ -645,7 +857,13 @@ final class AppModel {
         }
     }
 
+    func deactivateSystemVPN() {
+        guard isSystemVPNActive else { return }
+        stopSystemVPNKeepingLocalProxy()
+    }
+
     private func stopSystemVPNKeepingLocalProxy() {
+        suppressStablePhysicalPathEvents(for: 5)
         Task {
             await engine.stop()
             guard localProxyRequested else { return }
@@ -658,6 +876,13 @@ final class AppModel {
                 presentToast(error.localizedDescription, tone: .error)
             }
         }
+    }
+
+    private func suppressStablePhysicalPathEvents(for seconds: TimeInterval) {
+        suppressStablePhysicalPathEventsUntil = max(
+            suppressStablePhysicalPathEventsUntil,
+            Date().addingTimeInterval(seconds)
+        )
     }
 
     /// Порт, свободный среди уже настроенных прокси.
@@ -832,6 +1057,7 @@ final class AppModel {
                     incoming: result.tunnels,
                     state: &state
                 )
+                _ = VPNQuickRoutes.synchronizeWhitelist(in: &state)
             }
             subscriptionErrors[subscription.id] = parseWarning(for: result)
             presentToast(
@@ -875,6 +1101,7 @@ final class AppModel {
                     incoming: result.tunnels,
                     state: &state
                 )
+                _ = VPNQuickRoutes.synchronizeWhitelist(in: &state)
                 if state.systemVPN.target == nil {
                     state.systemVPN.target = state.tunnels.first.map { .tunnel($0.id) }
                 }
@@ -936,6 +1163,7 @@ final class AppModel {
         cancelTunnelLatencyTests()
         let removedIDs = apply { state in
             let removedIDs = SubscriptionReconciler.remove(subscriptionID: subscriptionID, state: &state)
+            _ = VPNQuickRoutes.synchronizeWhitelist(in: &state)
             if state.systemVPN.target == nil {
                 state.systemVPN.target = state.tunnels.first.map { .tunnel($0.id) }
             }

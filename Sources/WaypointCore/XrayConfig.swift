@@ -29,6 +29,7 @@ public enum XrayConfig {
     public static let systemVPNTag = "in-system-vpn"
     public static let vpnAPIInboundTag = "in-vpn-api"
     public static let vpnAPITag = "api"
+    public static let connectivityProbeURL = "https://cp.cloudflare.com/generate_204"
 
     static let dnsTag = "dns-bypass"
 
@@ -147,21 +148,23 @@ public enum XrayConfig {
         ])
     }
 
-    /// Добавляет first-match правила одного inbound и возвращает id реально
-    /// используемого туннеля. Если туннель не выбран, fallback остаётся direct;
-    /// Engine отдельно запрещает такой запуск для профилей с туннелем.
-    @discardableResult
-    static func appendRouteRules(
-        inboundTag: String,
-        routingMode: LocalProxy.RoutingMode,
-        tunnel: Tunnel?,
-        rules: inout [JSONValue]
-    ) -> String? {
-        let usesTunnel = routingMode != .directAll && tunnel != nil
+    /// Добавляет first-match правила одного локального прокси. Сломанное
+    /// назначение блокируется: исчезнувшая цепочка не должна незаметно менять
+    /// внешний IP на Direct или на первый outbound в конфиге Xray.
+    static func appendLocalProxyRouteRules(
+        state: AppState,
+        proxy: LocalProxy,
+        rules: inout [JSONValue],
+        usedTunnelIds: inout [String],
+        usedChainIds: inout [String],
+        usedFallbackIds: inout [String]
+    ) {
+        let inboundTag = proxyTag(proxy.id)
+        let routeIsValid = state.localProxyRouteIssue(proxy) == nil
 
-        if routingMode == .directRussia, usesTunnel {
+        if proxy.routingMode == .directRussia, routeIsValid {
             // Xray применяет первое совпавшее правило. Исключения direct
-            // обязаны идти до общего fallback в туннель.
+            // обязаны идти до общего выхода в туннель/цепочку/fallback.
             rules.append(.object([
                 "type": .string("field"),
                 "inboundTag": .array([.string(inboundTag)]),
@@ -176,21 +179,37 @@ public enum XrayConfig {
             ]))
         }
 
-        if usesTunnel, let tunnel {
+        if proxy.routingMode == .directAll {
             rules.append(.object([
                 "type": .string("field"),
                 "inboundTag": .array([.string(inboundTag)]),
-                "outboundTag": .string(tunnelTag(tunnel.id)),
+                "outboundTag": .string("direct"),
             ]))
-            return tunnel.id
+            return
         }
 
-        rules.append(.object([
-            "type": .string("field"),
-            "inboundTag": .array([.string(inboundTag)]),
-            "outboundTag": .string("direct"),
-        ]))
-        return nil
+        if routeIsValid,
+           let target = proxy.target,
+           let destination = resolveVPNRouteTarget(
+                target,
+                state: state,
+                usedTunnelIds: &usedTunnelIds,
+                usedChainIds: &usedChainIds,
+                usedFallbackIds: &usedFallbackIds
+           ) {
+            var rule: [String: JSONValue] = [
+                "type": .string("field"),
+                "inboundTag": .array([.string(inboundTag)]),
+            ]
+            destination.apply(to: &rule)
+            rules.append(.object(rule))
+        } else {
+            rules.append(.object([
+                "type": .string("field"),
+                "inboundTag": .array([.string(inboundTag)]),
+                "outboundTag": .string("block"),
+            ]))
+        }
     }
 
     /// Добавляет пользовательские маршруты до обычных профилей. Возвращает
@@ -502,16 +521,14 @@ public enum XrayConfig {
 
         for proxy in proxies where proxy.port > 0 {
             inbounds.append(buildInbound(proxy))
-
-            let tunnel = state.tunnel(id: proxy.tunnelId)
-            if let id = appendRouteRules(
-                inboundTag: proxyTag(proxy.id),
-                routingMode: proxy.routingMode,
-                tunnel: tunnel,
-                rules: &rules
-            ), !usedTunnelIds.contains(id) {
-                usedTunnelIds.append(id)
-            }
+            appendLocalProxyRouteRules(
+                state: state,
+                proxy: proxy,
+                rules: &rules,
+                usedTunnelIds: &usedTunnelIds,
+                usedChainIds: &usedChainIds,
+                usedFallbackIds: &usedFallbackIds
+            )
         }
 
         // Fallbacks reuse the same canonical tunnel/chain handlers as direct
@@ -604,7 +621,7 @@ public enum XrayConfig {
                 vpnPoliciesNeedIPResolution
                 || persistentRoutesNeedIPResolution
                 || proxies.contains {
-                    $0.routingMode == .directRussia && state.tunnel(id: $0.tunnelId) != nil
+                    $0.routingMode == .directRussia && state.localProxyRouteIssue($0) == nil
                 } ? "IPIfNonMatch" : "AsIs"
             ),
             "rules": .array(rules),
@@ -643,7 +660,7 @@ public enum XrayConfig {
         if !observatorySelectors.isEmpty {
             config["observatory"] = .object([
                 "subjectSelector": .array(observatorySelectors),
-                "probeUrl": .string("https://www.gstatic.com/generate_204"),
+                "probeUrl": .string(connectivityProbeURL),
                 // Probe starts immediately; a short steady interval bounds the
                 // dead-primary window without putting health checks in the data path.
                 "probeInterval": .string("3s"),

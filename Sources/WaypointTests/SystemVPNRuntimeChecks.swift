@@ -80,14 +80,14 @@ enum SystemVPNRuntimeChecks {
         }
 
         h.check("смена сети передаёт helper новый physical interface") {
-            let request = try SystemVPNReloadRequest(
+            let request = try SystemVPNReloadRequest.networkRecovery(
                 generation: "network-123",
-                bypassInterface: "en7",
-                routeOnly: true
+                bypassInterface: "en7"
             )
-            try expectEqual(request.encodedText, "network-123 en7 route\n", "network reload request")
+            try expectEqual(request.encodedText, "network-123 en7\n", "network reload request")
+            try expectEqual(request.routeOnly, false, "stale Xray transports должны обновиться")
             try expectThrows("небезопасное имя интерфейса") {
-                _ = try SystemVPNReloadRequest(
+                _ = try SystemVPNReloadRequest.networkRecovery(
                     generation: "network-123",
                     bypassInterface: "../../en0"
                 )

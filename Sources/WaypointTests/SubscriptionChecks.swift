@@ -75,6 +75,7 @@ enum SubscriptionChecks {
 
             try expectEqual(result.removedTunnelIDs, ["t_removed"], "удалённые узлы")
             try expectEqual(state.proxies[0].tunnelId, nil, "маршрут прокси должен стать прямым")
+            try expectEqual(state.proxies[0].routingMode, .directAll, "прямой профиль должен быть явным")
             try expectEqual(state.systemVPN.target, .tunnel(kept.id), "основной маршрут VPN")
         }
 
@@ -97,6 +98,7 @@ enum SubscriptionChecks {
             try expectEqual(state.subscriptions.map(\.id), ["s_keep"], "оставшиеся подписки")
             try expectEqual(Set(state.tunnels.map(\.id)), Set(["t_other", "t_manual"]), "оставшиеся туннели")
             try expectEqual(state.proxies[0].tunnelId, nil, "привязка прокси")
+            try expectEqual(state.proxies[0].routingMode, .directAll, "прямой профиль прокси")
             try expectEqual(state.systemVPN.target, .tunnel(other.id), "основной маршрут VPN")
         }
 
@@ -126,6 +128,10 @@ enum SubscriptionChecks {
                 systemVPN: SystemVPNConfiguration(target: .chain(chain.id)),
                 subscriptions: [subscription],
                 tunnels: [removed, kept],
+                proxies: [
+                    LocalProxy(id: "p-chain", name: "Chain", kind: .socks, port: 10808, target: .chain(chain.id)),
+                    LocalProxy(id: "p-fallback", name: "Fallback", kind: .http, port: 10809, target: .fallback(fallback.id)),
+                ],
                 vpnTunnelChains: [chain],
                 vpnFallbackGroups: [fallback]
             )
@@ -137,6 +143,10 @@ enum SubscriptionChecks {
             )
             try expectEqual(state.systemVPN.target, .chain(chain.id), "цепочка не должна заменяться")
             try expect(state.systemVPNMainRouteIssue() != nil, "битая цепочка должна быть видима")
+            try expectEqual(state.proxies[0].target, .chain(chain.id), "цепочка прокси не должна заменяться")
+            try expect(state.localProxyRouteIssue(state.proxies[0]) != nil, "битая цепочка прокси должна быть видима")
+            try expectEqual(state.proxies[1].target, .fallback(fallback.id), "fallback прокси не должен заменяться")
+            try expect(state.localProxyRouteIssue(state.proxies[1]) != nil, "битый fallback прокси должен быть видим")
 
             state.systemVPN.target = .fallback(fallback.id)
             try expectEqual(state.systemVPN.target, .fallback(fallback.id), "fallback не должен заменяться")

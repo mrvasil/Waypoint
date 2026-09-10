@@ -44,7 +44,6 @@ struct ContentView: View {
         switch section {
         case .overview:
             DashboardView(
-                onAddTunnel: { showAddTunnel = true },
                 onAddProxy: { showAddProxy = true },
                 onOpenSection: { destination in
                     withAnimation(reduceMotion ? nil : .smooth(duration: 0.22)) {

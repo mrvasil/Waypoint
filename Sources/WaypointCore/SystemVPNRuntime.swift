@@ -94,6 +94,20 @@ public struct SystemVPNReloadRequest: Sendable, Equatable {
         self.routeOnly = routeOnly
     }
 
+    /// После смены physical link одного обновления gateway недостаточно:
+    /// TCP/UDP/WireGuard-сокеты Xray остаются привязаны к исчезнувшей сети.
+    /// Helper обновляет Xray транзакционно, не снимая utun и kill-switch.
+    public static func networkRecovery(
+        generation: String,
+        bypassInterface: String
+    ) throws -> Self {
+        try Self(
+            generation: generation,
+            bypassInterface: bypassInterface,
+            routeOnly: false
+        )
+    }
+
     public var encodedText: String {
         if let bypassInterface {
             return "\(generation) \(bypassInterface)\(routeOnly ? " route" : "")\n"

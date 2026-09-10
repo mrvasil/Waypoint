@@ -154,6 +154,26 @@ enum ParserChecks {
             try expectEqual(t.port, 51820, "порт")
         }
 
+        h.check("WireGuard исправляет лишний процент после порта при импорте") {
+            let cfg = """
+            [Interface]
+            PrivateKey = key==
+            Address = 10.0.0.2/32
+            [Peer]
+            PublicKey = pub==
+            Endpoint = wg-us-aws.mrvasil.ru:39201%
+            PersistentKeepalive = 17
+            """
+            let tunnel = try Parsers.parseWireguard(cfg)
+            try expectEqual(tunnel.host, "wg-us-aws.mrvasil.ru", "хост")
+            try expectEqual(tunnel.port, 39201, "порт")
+            try expectEqual(
+                tunnel.outbound["settings"]?["peers"]?[0]?["endpoint"]?.stringValue,
+                "wg-us-aws.mrvasil.ru:39201",
+                "сохранённый endpoint"
+            )
+        }
+
         h.check("WireGuard без PrivateKey — ошибка") {
             try expectThrows("нет PrivateKey") {
                 _ = try Parsers.parseWireguard("[Interface]\nAddress = 10.0.0.2/32\n[Peer]\nPublicKey = x")

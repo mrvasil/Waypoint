@@ -29,7 +29,12 @@ enum LiveChecks {
         print("\nсостояние (\(store.fileURL.path)):")
         print("  туннелей: \(state.tunnels.count), прокси: \(state.proxies.count)")
         for t in state.tunnels { print("  · \(t.type) \(t.name) → \(t.host):\(t.port)") }
-        for p in state.proxies { print("  · \(p.url) → tunnelId=\(p.tunnelId ?? "нет")") }
+        for p in state.proxies {
+            let route = p.target.map { target in
+                "\(target.kind.rawValue):\(target.referenceId ?? "-")"
+            } ?? "direct"
+            print("  · \(p.url) → route=\(route)")
+        }
 
         let engine = Engine(workDir: URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("waypoint-live"))
 
@@ -256,7 +261,7 @@ extension LiveChecks {
                 "--silent", "--show-error", "--output", "/dev/null",
                 "--write-out", "%{http_code}", "--max-time", "7",
                 "--proxy", "http://127.0.0.1:\(healthPort)",
-                "https://www.gstatic.com/generate_204",
+                XrayConfig.connectivityProbeURL,
             ]
         )
         _ = runProcess(
@@ -532,8 +537,9 @@ extension LiveChecks {
             }
 
             // Симулируем network-path event на текущем интерфейсе. Во время
-            // rebind часто снимаем route: ни один sample не должен уйти с utun,
-            // а route-only переход не должен менять PID Xray.
+            // rebind часто снимаем route: ни один sample не должен уйти с utun.
+            // Xray обновляется внутри того же helper, чтобы stale transport-
+            // сокеты предыдущей Wi-Fi сети не оставались жить.
             let routeSampler = Task.detached(priority: .utility) {
                 var interfaces: [String] = []
                 for _ in 0..<80 {
@@ -544,6 +550,7 @@ extension LiveChecks {
                 return interfaces
             }
             var rebindError: String?
+            let rebindStartedAt = Date()
             do {
                 try await engine.reconnectForNetworkChange(
                     state: state,
@@ -552,18 +559,29 @@ extension LiveChecks {
             } catch {
                 rebindError = error.localizedDescription
             }
+            let rebindDuration = Date().timeIntervalSince(rebindStartedAt)
             let sampledInterfaces = await routeSampler.value
             let reboundStatus = await engine.status()
             let rebindOK = rebindError == nil
                 && reboundStatus.ready
                 && reboundStatus.vpnInterface == interface
-                && reboundStatus.pid == status.pid
+                && reboundStatus.pid != nil
+                && reboundStatus.pid != status.pid
                 && sampledInterfaces.allSatisfy { $0 == interface }
+                && rebindDuration < 3
             if rebindOK {
-                print("system VPN: network rebind OK; utun и xray_pid сохранены, Direct samples=0")
+                print(
+                    "system VPN: network rebind OK за "
+                    + String(format: "%.2f", rebindDuration)
+                    + " с; utun сохранён, Xray transport обновлён, Direct samples=0"
+                )
             } else {
                 let directSamples = sampledInterfaces.filter { $0 != interface }
-                print("system VPN: network rebind FAIL: \(rebindError ?? "pid/route changed"), non-utun=\(directSamples)")
+                print(
+                    "system VPN: network rebind FAIL за "
+                    + String(format: "%.2f", rebindDuration)
+                    + " с: \(rebindError ?? "pid/route changed"), non-utun=\(directSamples)"
+                )
             }
 
             let reboundHTTPS = capture(
@@ -714,6 +732,9 @@ extension LiveChecks {
                     target: .fallback("vf_runtime_validation")
                 ),
             ])
+            // Тем же реальным `xray run -test` проверяем, что fallback можно
+            // назначить непосредственно локальному proxy inbound.
+            state.proxies[0].target = .fallback("vf_runtime_validation")
         }
 
         let workDir = URL(fileURLWithPath: NSTemporaryDirectory())

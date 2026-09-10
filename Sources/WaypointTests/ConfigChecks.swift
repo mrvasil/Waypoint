@@ -109,6 +109,27 @@ enum ConfigChecks {
             try expectEqual(keepAlives, [25, 25, 17], "persistent keepalive")
         }
 
+        h.check("повреждённый WireGuard endpoint оздоравливается при генерации") {
+            var state = sampleState()
+            state.tunnels[1].outbound["settings"]?["peers"] = .array([
+                .object([
+                    "endpoint": .string("wg-us-aws.mrvasil.ru:39201%"),
+                    "keepAlive": .int(17),
+                ]),
+            ])
+            let config = XrayConfig.build(state: state, bypassInterface: "en0")
+            let wireguard = (config["outbounds"]?.arrayValue ?? []).first {
+                $0["tag"]?.stringValue == "out-t2"
+            }
+            let peer = wireguard?["settings"]?["peers"]?[0]
+            try expectEqual(
+                peer?["endpoint"]?.stringValue,
+                "wg-us-aws.mrvasil.ru:39201",
+                "runtime-safe endpoint"
+            )
+            try expectEqual(peer?["keepAlive"]?.intValue, 17, "explicit keepalive")
+        }
+
         h.check("без обхода sockopt не появляется") {
             let c = XrayConfig.build(state: sampleState(), bypassInterface: nil)
             for o in c["outbounds"]?.arrayValue ?? [] {
@@ -203,9 +224,10 @@ enum ConfigChecks {
             try expectEqual(c["inbounds"]?.arrayValue?.count, 1, "inbound'ов")
         }
 
-        h.check("прокси без туннеля идёт напрямую") {
+        h.check("явный Direct-профиль прокси идёт напрямую") {
             var state = sampleState()
             state.proxies[0].tunnelId = nil
+            state.proxies[0].routingMode = .directAll
             let c = XrayConfig.build(state: state)
             let rules = c["routing"]?["rules"]?.arrayValue ?? []
             let rule = rules.first { $0["inboundTag"]?[0]?.stringValue == "in-p1" }
@@ -272,6 +294,42 @@ enum ConfigChecks {
             try expectEqual(rules[0]["outboundTag"]?.stringValue, "direct", "локальная сеть напрямую")
             try expectEqual(rules[1]["outboundTag"]?.stringValue, "out-t1", "остальное в туннель")
             try expectEqual(c["routing"]?["domainStrategy"]?.stringValue, "AsIs", "domainStrategy")
+        }
+
+        h.check("основной Direct оставляет политики в туннеле, а остальное выпускает напрямую") {
+            var state = sampleState()
+            state.proxies = []
+            state.systemVPN = SystemVPNConfiguration(target: .direct)
+            state.vpnRoutingPolicies = [
+                VPNRoutingPolicy(
+                    id: "vr-custom",
+                    name: "Custom tunnel",
+                    targets: "only.example",
+                    target: .tunnel("t2")
+                ),
+            ]
+
+            try expectEqual(state.systemVPNMainRouteIssue(), nil, "Direct должен быть допустимым основным маршрутом")
+            let config = XrayConfig.build(
+                state: state,
+                bypassInterface: "en0",
+                systemVPNInterface: "utun99"
+            )
+            let rules = (config["routing"]?["rules"]?.arrayValue ?? []).filter {
+                $0["inboundTag"]?.arrayValue == [.string(XrayConfig.systemVPNTag)]
+            }
+            let policyIndex = rules.firstIndex {
+                $0["domain"]?[0]?.stringValue == "domain:only.example"
+                    && $0["outboundTag"]?.stringValue == "out-t2"
+            }
+            let defaultIndex = rules.firstIndex {
+                $0["domain"] == nil && $0["ip"] == nil
+                    && $0["outboundTag"]?.stringValue == "direct"
+            }
+
+            try expect(policyIndex != nil, "кастомная политика пропала")
+            try expect(defaultIndex != nil, "нет основного Direct")
+            try expect(policyIndex! < defaultIndex!, "политика должна применяться раньше Direct")
         }
 
         h.check("системный VPN работает без локальных прокси") {
@@ -618,6 +676,11 @@ enum ConfigChecks {
                 XrayConfig.tunnelTag("t1"),
                 "observatory selector"
             )
+            try expectEqual(
+                c["observatory"]?["probeUrl"]?.stringValue,
+                "https://cp.cloudflare.com/generate_204",
+                "стабильный connectivity probe"
+            )
             try expectEqual(c["observatory"]?["probeInterval"]?.stringValue, "3s", "probe interval")
 
             let outboundTags = (c["outbounds"]?.arrayValue ?? []).compactMap { $0["tag"]?.stringValue }
@@ -633,6 +696,137 @@ enum ConfigChecks {
                 $0["protocol"]?.stringValue == "wireguard"
             }
             try expectEqual(wireGuardOutbounds.count, 1, "WireGuard peer не должен дублироваться")
+        }
+
+        h.check("локальные прокси независимо выбирают цепочку и fallback") {
+            var state = sampleState()
+            state.tunnels.append(Tunnel(
+                id: "t3", name: "reserve", type: "vless", host: "reserve.example.com", port: 443,
+                outbound: state.tunnels[0].outbound
+            ))
+            state.vpnTunnelChains = [
+                VPNTunnelChain(id: "c-proxy", name: "Proxy chain", tunnelIds: ["t2", "t1"])
+            ]
+            state.vpnFallbackGroups = [
+                VPNFallbackGroup(
+                    id: "f-proxy",
+                    name: "Proxy fallback",
+                    members: [
+                        VPNFallbackMember(id: "m-primary", target: .tunnel("t3")),
+                        VPNFallbackMember(id: "m-chain", target: .chain("c-proxy")),
+                    ]
+                )
+            ]
+            state.proxies[0].target = .chain("c-proxy")
+            state.proxies[1].target = .fallback("f-proxy")
+            state.systemVPN = SystemVPNConfiguration(tunnelId: "t1")
+
+            let config = XrayConfig.build(
+                state: state,
+                bypassInterface: "en0",
+                systemVPNInterface: "utun90",
+                systemVPNAPIPort: 24_681,
+                systemVPNMetricsPort: 24_682
+            )
+            let rules = config["routing"]?["rules"]?.arrayValue ?? []
+            let chainRule = rules.first {
+                $0["inboundTag"]?.arrayValue == [.string(XrayConfig.proxyTag("p1"))]
+                    && $0["domain"] == nil && $0["ip"] == nil
+            }
+            let fallbackRule = rules.first {
+                $0["inboundTag"]?.arrayValue == [.string(XrayConfig.proxyTag("p2"))]
+                    && $0["domain"] == nil && $0["ip"] == nil
+            }
+            try expectEqual(
+                chainRule?["outboundTag"]?.stringValue,
+                XrayConfig.vpnChainTag("c-proxy"),
+                "первый прокси должен использовать цепочку"
+            )
+            try expectEqual(
+                fallbackRule?["balancerTag"]?.stringValue,
+                XrayConfig.vpnFallbackTag("f-proxy"),
+                "второй прокси должен использовать fallback"
+            )
+            let tags = (config["outbounds"]?.arrayValue ?? []).compactMap { $0["tag"]?.stringValue }
+            try expect(tags.contains(XrayConfig.vpnChainTag("c-proxy")), "цепочка прокси не материализована")
+            try expect(tags.contains(XrayConfig.tunnelTag("t3")), "кандидат fallback не материализован")
+            try expectEqual(
+                config["routing"]?["balancers"]?[0]?["tag"]?.stringValue,
+                XrayConfig.vpnFallbackTag("f-proxy"),
+                "balancer прокси"
+            )
+            try expectEqual(state.usedVPNFallbackGroupIDs(), ["f-proxy"], "fallback прокси должен наблюдаться runtime")
+
+            let proxyOnly = XrayConfig.build(state: state, bypassInterface: "en0")
+            try expect(
+                !(proxyOnly["inbounds"]?.arrayValue ?? []).contains {
+                    $0["tag"]?.stringValue == XrayConfig.systemVPNTag
+                },
+                "proxy-only конфиг не должен создавать TUN"
+            )
+            let proxyOnlyFallbackRule = (proxyOnly["routing"]?["rules"]?.arrayValue ?? []).first {
+                $0["inboundTag"]?.arrayValue == [.string(XrayConfig.proxyTag("p2"))]
+            }
+            try expectEqual(
+                proxyOnlyFallbackRule?["balancerTag"]?.stringValue,
+                XrayConfig.vpnFallbackTag("f-proxy"),
+                "fallback должен работать без включённого системного VPN"
+            )
+            try expect(proxyOnly["observatory"] != nil, "proxy-only fallback требует observatory")
+        }
+
+        h.check("RU-профиль локального прокси поддерживает цепочку") {
+            var state = sampleState()
+            state.proxies = [
+                LocalProxy(
+                    id: "p-chain-ru",
+                    name: "RU direct",
+                    kind: .socks,
+                    port: 10808,
+                    target: .chain("c-ru"),
+                    routingMode: .directRussia
+                )
+            ]
+            state.vpnTunnelChains = [
+                VPNTunnelChain(id: "c-ru", name: "RU chain", tunnelIds: ["t2", "t1"])
+            ]
+
+            let config = XrayConfig.build(state: state)
+            let rules = config["routing"]?["rules"]?.arrayValue ?? []
+            let inbound = [JSONValue.string(XrayConfig.proxyTag("p-chain-ru"))]
+            let ruDomain = rules.first {
+                $0["inboundTag"]?.arrayValue == inbound
+                    && $0["domain"]?[0]?.stringValue == "geosite:category-ru"
+            }
+            let catchAll = rules.first {
+                $0["inboundTag"]?.arrayValue == inbound
+                    && $0["domain"] == nil && $0["ip"] == nil
+            }
+            try expectEqual(ruDomain?["outboundTag"]?.stringValue, "direct", "RU-домены")
+            try expectEqual(catchAll?["outboundTag"]?.stringValue, XrayConfig.vpnChainTag("c-ru"), "остальной трафик")
+            try expectEqual(config["routing"]?["domainStrategy"]?.stringValue, "IPIfNonMatch", "GeoIP resolve")
+        }
+
+        h.check("сломанный маршрут локального прокси блокируется без утечки") {
+            var state = sampleState()
+            state.proxies = [
+                LocalProxy(
+                    id: "p-broken",
+                    name: "Broken",
+                    kind: .http,
+                    port: 10809,
+                    target: .chain("missing")
+                )
+            ]
+
+            let config = XrayConfig.build(state: state)
+            let rule = (config["routing"]?["rules"]?.arrayValue ?? []).first {
+                $0["inboundTag"]?.arrayValue == [.string(XrayConfig.proxyTag("p-broken"))]
+            }
+            try expectEqual(rule?["outboundTag"]?.stringValue, "block", "fail-closed маршрут")
+            try expectEqual(state.localProxyRouteIssue(state.proxies[0]), "Цепочка удалена", "видимая причина")
+            let tags = (config["outbounds"]?.arrayValue ?? []).compactMap { $0["tag"]?.stringValue }
+            try expect(!tags.contains(XrayConfig.vpnChainTag("missing")), "битая цепочка попала в outbound")
         }
 
         h.check("health telemetry системного VPN слушает только loopback") {
@@ -729,14 +923,14 @@ enum ConfigChecks {
             try expectEqual(catchAll, nil, "битый маршрут не должен получить catch-all")
             try expectEqual(state.systemVPNMainRouteIssue(), "Цепочка выключена", "причина блокировки запуска")
 
-            state.systemVPN = SystemVPNConfiguration(target: .direct)
-            let directConfig = XrayConfig.build(state: state, systemVPNInterface: "utun86")
-            let directCatchAll = (directConfig["routing"]?["rules"]?.arrayValue ?? []).first {
+            state.systemVPN = SystemVPNConfiguration(target: .block)
+            let blockedConfig = XrayConfig.build(state: state, systemVPNInterface: "utun86")
+            let blockedCatchAll = (blockedConfig["routing"]?["rules"]?.arrayValue ?? []).first {
                 $0["inboundTag"]?.arrayValue == [.string(XrayConfig.systemVPNTag)]
                     && $0["domain"] == nil
                     && $0["ip"] == nil
             }
-            try expectEqual(directCatchAll, nil, "Direct нельзя использовать как основной маршрут")
+            try expectEqual(blockedCatchAll, nil, "Block нельзя использовать как основной маршрут")
         }
 
         h.check("битые VPN-топологии не создают случайный direct") {
@@ -875,6 +1069,39 @@ enum ConfigChecks {
             """
             let proxy = try JSONDecoder().decode(LocalProxy.self, from: Data(json.utf8))
             try expectEqual(proxy.routingMode, .directAll, "профиль прямого прокси")
+        }
+
+        h.check("старый tunnelId прокси мигрирует в typed target") {
+            let json = """
+            {"id":"p_legacy","name":"legacy","kind":"socks","listen":"127.0.0.1",
+             "port":10808,"tunnelId":"t_old","routingMode":"directRussia","enabled":true}
+            """
+            let proxy = try JSONDecoder().decode(LocalProxy.self, from: Data(json.utf8))
+            try expectEqual(proxy.target, .tunnel("t_old"), "мигрированный target")
+            try expectEqual(proxy.tunnelId, "t_old", "source compatibility")
+
+            let encoded = try JSONEncoder().encode(proxy)
+            let object = try JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+            try expect(object?["target"] != nil, "новое поле target отсутствует")
+            try expect(object?["tunnelId"] == nil, "legacy tunnelId снова записался")
+        }
+
+        h.check("fallback прокси проходит JSON round-trip без legacy-поля") {
+            let original = LocalProxy(
+                id: "p_fallback",
+                name: "Fallback",
+                kind: .http,
+                port: 10809,
+                target: .fallback("f_main")
+            )
+            let encoded = try JSONEncoder().encode(original)
+            let decoded = try JSONDecoder().decode(LocalProxy.self, from: encoded)
+            try expectEqual(decoded, original, "round-trip прокси")
+            let object = try JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+            try expect(object?["tunnelId"] == nil, "state содержит legacy tunnelId")
+            let target = object?["target"] as? [String: Any]
+            try expectEqual(target?["kind"] as? String, "fallback", "тип выхода")
+            try expectEqual(target?["referenceId"] as? String, "f_main", "ссылка выхода")
         }
 
         h.check("старый режим системного VPN игнорируется при чтении") {
